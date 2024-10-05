@@ -1,3 +1,8 @@
+// This program is designed to control a robot using various sensors and actuators. 
+// It includes PID control for motor speed, color detection using the TCS3200 sensor, 
+// distance measurement using an ultrasonic sensor, and orientation correction using the MPU6050 gyroscope. 
+// The robot can detect walls and adjust its direction, move forward, and respond to different colors detected on the ground.
+
 #include <PID_v1.h>  // Librería para el control PID
 #include <Wire.h>  // Librería para la comunicación I2C
 #include <MPU6050.h>  // Librería para el sensor MPU6050

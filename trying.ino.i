@@ -1,105 +1,151 @@
-// Right Motor
-int RencoderChannelA = 5;
-int RencoderChannelB = 6; // Channel B equals to direcction
-int RmotorPWM = 10;
 
-// Left Motor
-int LencoderChannelA = 2;
-int LencoderChannelB = 3;
-int LmotorPWM = 9;
+// ---------------------------------------------- Implementación de Colores ----------------------------------------------
 
-// Positions
-int Rposition = 0;
-int RlastPosition = 0;
+#include <TCS3200.h>
+#include <NewPing.h>
+#include <PID_v1.h>
+#include <Wire.h>
+#include <MPU6050.h>
 
-int Lposition = 0;
-int LlastPosition = 0;
+// Definición de pines para el TCS3200 y motores
+#define S0 2
+#define S1 3
+#define S2 4
+#define S3 5
+#define OUT_PIN 6
+#define TRIG_PIN 9
+#define ECHO_PIN 10
+#define MOTOR_LEFT_PIN_A 11
+#define MOTOR_LEFT_PIN_B 12
+#define MOTOR_RIGHT_PIN_A 13
+#define MOTOR_RIGHT_PIN_B 14
 
-int counter = LOW;
+// Variables del sensor de color
+int redValue = 0, greenValue = 0, blueValue = 0;
+int redThreshold = 100, greenThreshold = 100, blueThreshold = 100; // Umbrales iniciales ajustables para los tres colores
+int tolerance = 20;  // Tolerancia de ajuste para los colores
 
-// Distance Sensor HC-SR04
-int trigPin = 7;
-int echoPin = 8;
+// Variables del sensor ultrasónico
+NewPing sonar(TRIG_PIN, ECHO_PIN, 200);
 
-float duration, distance;
+// Variables PID
+double setpoint = 0, input, output;
+double Kp = 2.0, Ki = 5.0, Kd = 1.0;
+PID pid(&input, &output, &setpoint, Kp, Ki, Kd, DIRECT);
+
+// Giroscopio
+MPU6050 mpu;
+int16_t ax, ay, az;
+int16_t gx, gy, gz;
+
+// Función para leer colores
+void readColor() {
+  redValue = TCS3200_ReadColor('R');
+  greenValue = TCS3200_ReadColor('G');
+  blueValue = TCS3200_ReadColor('B');
+}
+
+// Función para detectar el color negro
+bool isBlack() {
+  return redValue < redThreshold / 2 && greenValue < greenThreshold / 2 && blueValue < blueThreshold / 2;
+}
+
+// Función para calibrar colores a través del monitor serial
+void calibrateColors() {
+  Serial.println("Calibración manual de colores...");
+  delay(2000);
+  
+  // Ajuste del color rojo
+  Serial.println("Coloca el robot en la unidad de color rojo y presiona cualquier tecla.");
+  while (Serial.available() == 0) { } // Espera a que el usuario presione una tecla
+  readColor();
+  redThreshold = redValue + tolerance;
+  Serial.print("Valor rojo calibrado: ");
+  Serial.println(redThreshold);
+  while (Serial.available() > 0) { Serial.read(); } // Limpia el buffer
+
+  // Ajuste del color verde
+  Serial.println("Coloca el robot en la unidad de color verde y presiona cualquier tecla.");
+  while (Serial.available() == 0) { }
+  readColor();
+  greenThreshold = greenValue + tolerance;
+  Serial.print("Valor verde calibrado: ");
+  Serial.println(greenThreshold);
+  while (Serial.available() > 0) { Serial.read(); }
+
+  // Ajuste del color azul
+  Serial.println("Coloca el robot en la unidad de color azul y presiona cualquier tecla.");
+  while (Serial.available() == 0) { }
+  readColor();
+  blueThreshold = blueValue + tolerance;
+  Serial.print("Valor azul calibrado: ");
+  Serial.println(blueThreshold);
+  while (Serial.available() > 0) { Serial.read(); }
+
+  Serial.println("Colores calibrados. El robot comenzará a moverse.");
+}
+
+// Función para detectar una pared usando el sensor ultrasónico
+bool detectWall() {
+  int distance = sonar.ping_cm();
+  if (distance > 0 && distance < 30) { // Pared detectada a menos de 30 cm
+    return true; 
+  } else {
+    return false;
+  }
+}
+
+// Control de los motores usando PID
+void moveForward() {
+  input = analogRead(A0);  // Sensor para ajustar el movimiento
+  pid.Compute();
+  
+  // Control de motores
+  analogWrite(MOTOR_LEFT_PIN_A, output);
+  analogWrite(MOTOR_RIGHT_PIN_A, output);
+}
+
+void stopMotors() {
+  analogWrite(MOTOR_LEFT_PIN_A, 0);
+  analogWrite(MOTOR_RIGHT_PIN_A, 0);
+}
 
 void setup() {
-    Serial.begin(9600);
-    pinMode(RencoderChannelA, INPUT);
-    pinMode(RencoderChannelB, INPUT);
-    pinMode(RmotorPWM, OUTPUT);
+  Serial.begin(9600);
+  // Inicialización de sensores y motores
+  TCS3200_init(S0, S1, S2, S3, OUT_PIN);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  
+  // Inicialización del giroscopio MPU6050
+  Wire.begin();
+  mpu.initialize();
+  
+  // PID
+  pid.SetMode(AUTOMATIC);
 
-    pinMode(LencoderChannelA, INPUT);
-    pinMode(LencoderChannelB, INPUT);
-    pinMode(LmotorPWM, OUTPUT);
-
-    pinMode(trigPin, OUTPUT);
-    pinMode(echoPin, INPUT);
+  // Calibración de colores
+  calibrateColors();
 }
 
 void loop() {
-    //
-}
+  // Leer el color actual
+  readColor();
+  
+  // Comprobación de color negro
+  if (isBlack()) {
+    stopMotors();
+    Serial.println("Color negro detectado, retrocediendo...");
+    // Lógica de retroceso y giro
+  } else {
+    // Continúa moviéndose
+    moveForward();
+  }
 
-
-
-void advance() {
-    distance();
-    while(distance > 10) {
-        LencoderCorrection();
-        RencoderCorrection();
-        digitalWrite(LmotorPWM, HIGH);
-        digitalWrite(RmotorPWM, HIGH);
-    }
-    digitalWrite(LmotorPWM, LOW);
-    digitalWrite(RmotorPWM, LOW);
-}
-
-void distance() {
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
-
-    duration = pulseIn(echoPin, HIGH);
-    distance = duration * 0.034 / 2;
-    Serial.println(distance);
-}
-
-void LencoderCorrection() {
-    encoderCorrection(LencoderChannelA, LencoderChannelB, Lposition, LlastPosition);
-}
-
-void RencoderCorrection() {
-    encoderCorrection(RencoderChannelA, RencoderChannelB, Rposition, RlastPosition);
-}
-
-void right() {
-    while(position < 50) {
-        RencoderCorrection();
-        digitalWrite(LmotorPWM, HIGH);
-    }
-    digitalWrite(LmotorPWM, LOW);
-}
-
-void left() {
-    while(position < 50) {
-        RencoderCorrection();
-        digitalWrite(RmotorPWM, HIGH);
-    }
-    digitalWrite(RmotorPWM, LOW);
-}
-
-void encoderCorrection(int encoderChannelA, int encoderChannelB, int &position, int &lastPosition) {
-    int counter = digitalRead(encoderChannelA); // Read the current state of encoder channel A
-    if ((lastPoition == LOW) && (counter == HIGH)) { // Check if there is a rising edge on channel A
-        if (digitalRead(encoderChannelB) == LOW) { // Check the state of channel B to determine direction
-            position++; // Increment position if channel B is LOW
-        } else {
-            position--; // Decrement position if channel B is HIGH
-        }
-        Serial.println(position); // Print the current position
-    }
-    lastPosition = counter; // Update the last position
+  // Detección de pared
+  if (detectWall()) {
+    stopMotors();
+    Serial.println("Pared detectada, ajustando dirección...");
+    // Lógica de ajuste de dirección
+  }
 }
