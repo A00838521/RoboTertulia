@@ -2,17 +2,21 @@ class Motor {
   private:
     int ENC_A, ENC_B;    // Pines del encoder
     int IN1, IN2, ENA;   // Pines del motor
-    int velocidad;       // Velocidad del motor
+    int velocidad;       // Velocidad actual del motor
+    int velocidadMax;    // Velocidad máxima permitida
+    int velocidadMin;    // Velocidad mínima permitida
 
   public:
     // Constructor
-    Motor(int encA, int encB, int in1, int in2, int ena, int v) {
+    Motor(int encA, int encB, int in1, int in2, int ena, int vMin, int vMax) {
       ENC_A = encA;
       ENC_B = encB;
       IN1 = in1;
       IN2 = in2;
       ENA = ena;
-      velocidad = v;
+      velocidadMin = vMin;
+      velocidadMax = vMax;
+      velocidad = vMin; // Iniciar con la velocidad mínima
       
       pinMode(ENC_A, INPUT);
       pinMode(ENC_B, INPUT);
@@ -23,18 +27,20 @@ class Motor {
 
     // Giro horario
     void giroHorario() {
+      analogWrite(ENA, velocidad);  // Control de velocidad variable
       digitalWrite(IN1, HIGH);
       digitalWrite(IN2, LOW);
-      analogWrite(ENA, velocidad);
-      Serial.println(F("----Giro Horario----"));
+      Serial.print(F("----Giro Horario a velocidad: "));
+      Serial.println(velocidad);
     }
 
     // Giro antihorario
     void giroAntihorario() {
+      analogWrite(ENA, velocidad);  // Control de velocidad variable
       digitalWrite(IN1, LOW);
       digitalWrite(IN2, HIGH);
-      analogWrite(ENA, velocidad);
-      Serial.println(F("----Giro Antihorario----"));
+      Serial.print(F("----Giro Antihorario a velocidad: "));
+      Serial.println(velocidad);
     }
 
     // Apagar motor
@@ -43,19 +49,24 @@ class Motor {
       Serial.println(F("----Motor Apagado----"));
     }
 
-    // Cambiar velocidad
-    void cambiarVelocidad(int v) {
-      velocidad = v;
-      Serial.print(F("Se cambió la velocidad a: "));
-      Serial.println(velocidad);
+    // Cambiar velocidad con límites (min y max)
+    void cambiarVelocidad(int nuevaVelocidad) {
+      if (nuevaVelocidad >= velocidadMin && nuevaVelocidad <= velocidadMax) {
+        velocidad = nuevaVelocidad;
+        Serial.print(F("Se cambió la velocidad a: "));
+        Serial.println(velocidad);
+      } else {
+        Serial.println(F("Velocidad fuera de los límites permitidos."));
+      }
     }
 
-    // Leer encoder
+    // Leer encoder (simulación para prueba)
     void leerEncoder() {
       int a = digitalRead(ENC_A);
       int b = digitalRead(ENC_B);
-      Serial.print(a * 5);  // Multiplicar por 5 solo como ejemplo
-      Serial.print("\t");
-      Serial.println(b * 5);
+      Serial.print("Encoder A: ");
+      Serial.print(a);
+      Serial.print(" | Encoder B: ");
+      Serial.println(b);
     }
 };
