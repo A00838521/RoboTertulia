@@ -1,9 +1,11 @@
 #include <QTRSensors.h>  // Librería para los sensores de línea QTR
 #include <math.h>        // Librería para funciones matemáticas como exp()
-#include "I2Cdev.h"
-#include "MPU6050.h"
-#include "Wire.h"
+#include "I2Cdev.h"      // Librería para el bus I2C
+#include "MPU6050.h"     // Librería para el giroscopio MPU6050
+#include "Wire.h"        // Librería para el bus I2C
 
+
+// ------------------------------------ Clase Motor ------------------------------------
 class Motor {
   private:
     int ENC_A, ENC_B;    // Pines del encoder
@@ -19,7 +21,6 @@ class Motor {
     
     // Encoder variables
     static volatile long pulsos; // Contador de pulsos, ahora es estático
-    float diametroRueda;  // Diámetro de la rueda en cm
     int ppr;              // Pulsos por revolución del encoder
     
     unsigned long tiempoAnterior;
@@ -28,7 +29,7 @@ class Motor {
 
   public:
     // Constructor
-    Motor(int encA, int encB, int in1, int in2, int ena, int vMin, int vMax, float _kp, float _ki, float _kd, float dRueda, int _ppr) {
+    Motor(int encA, int encB, int in1, int in2, int ena, int vMin, int vMax, float _kp, float _ki, float _kd, int _ppr) {
       ENC_A = encA;
       ENC_B = encB;
       IN1 = in1;
@@ -41,7 +42,6 @@ class Motor {
       kp = _kp;
       ki = _ki;
       kd = _kd;
-      diametroRueda = dRueda;
       ppr = _ppr;
       pulsos = 0;
       errorAnterior = 0;
@@ -71,15 +71,14 @@ class Motor {
       pulsos++;
     }
 
-    // Calcular distancia recorrida en cm basada en pulsos del encoder
-    float calcularDistancia() {
-      float circunferencia = PI * diametroRueda;  // Circunferencia de la rueda
-      return (pulsos * circunferencia) / ppr;     // Distancia recorrida en cm
+    // Calcular las revoluciones basadas en pulsos del encoder
+    float calcularRevoluciones() {
+      return (float)pulsos / ppr;     // Calcula revoluciones como pulsos / pulsos por revolución
     }
 
     // Calcular PID
     void controlarPID(float setpoint) {
-      float error = setpoint - calcularDistancia();
+      float error = setpoint - calcularRevoluciones();
       float dt = (millis() - tiempoAnterior) / 1000.0;  // Tiempo en segundos
 
       integral += error * dt;
@@ -127,13 +126,13 @@ class Motor {
       }
     }
     
-    // Función para avanzar una distancia específica en cm
-    void avanzarDistancia(float distancia, bool sentidoHorario) {
+    // Función para avanzar un número específico de revoluciones
+    void avanzarRevoluciones(float revoluciones, bool sentidoHorario) {
       // Resetear contador de pulsos
       pulsos = 0;
-      float setpoint = distancia;
+      float setpoint = revoluciones;
       
-      while (calcularDistancia() < setpoint) {
+      while (calcularRevoluciones() < setpoint) {
         controlarPID(setpoint);
         
         // Girar en sentido horario o antihorario según el motor
@@ -151,15 +150,11 @@ class Motor {
       Serial.print("Pulsos: ");
       Serial.println(pulsos);
     }
-
-    // Inicializar (nueva función basada en el segundo código)
-    void inicializar() {
-      pinMode(IN1, OUTPUT);
-      pinMode(IN2, OUTPUT);
-      pinMode(ENA, OUTPUT);
-    }
 };
 
+
+
+// ------------------------------------ Definiciones ------------------------------------
 // Inicializar variables estáticas
 volatile long Motor::pulsos = 0;
 Motor* Motor::instanciaActual = nullptr;
@@ -190,8 +185,9 @@ int ax, ay, az;
 int gx, gy, gz;
 
 // Definición del sensor QTR
-QTRSensorsAnalog qtra((unsigned char[]) {A4, A5, A6, A7, A8, A9, A10, A11 }, 8);
-unsigned int IR[8];  // Matriz para almacenar los valores de los sensores IR
+QTRSensors qtr;
+const uint8_t SensorCount = 8;
+uint16_t sensorValues[SensorCount];
 
 // PID
 const float kp = 0.2;   // Constante proporcional
@@ -209,19 +205,50 @@ int vMin = 0;        // Velocidad mínima
 int vMax = 255;      // Límite superior de la velocidad
 
 // Definición de motores
-Motor motorIzq(2, 3, 4, 23, 22, vMin, vMax, 0.1, 0.01, 0.05, 7.0, 360);  // Motor izquierdo
-Motor motorDer(6, 7, 5, 24, 25, vMin, vMax, 0.1, 0.01, 0.05, 7.0, 360); // Motor derecho
+Motor motorIzq(2, 3, 4, 23, 22, vMin, vMax, 0.1, 0.01, 0.05, 360);  // Motor izquierdo
+Motor motorDer(6, 7, 5, 24, 25, vMin, vMax, 0.1, 0.01, 0.05, 360); // Motor derecho
 
+
+
+
+// ------------------------------------------- Setup -----------------------------------------
 void setup() {
-  Serial.begin(9600);  // Inicia la comunicación serial para depuración
-  motorIzq.inicializar();
-  motorDer.inicializar();
+  // ------------------------------------ Sensor QTR -------------------------------------------
+  qtr.setTypeAnalog();
+  qtr.setSensorPins((const uint8_t[]){A4, A5, A6, A7, A8, A9, A10, A11}, SensorCount);
+  qtr.setEmitterPin(35);
 
-  // Calibración del sensor QTR
-  for (uint16_t i = 0; i < 400; i++) {
-    qtra.calibrate();
+  delay(500);
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH); // turn on Arduino's LED to indicate we are in calibration mode
+
+  // analogRead() takes about 0.1 ms on an AVR.
+  // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors * 10 reads per calibrate() call = ~24 ms per calibrate() call.
+  // Call calibrate() 400 times to make calibration take about 10 seconds.
+  for (uint16_t i = 0; i < 400; i++){
+    qtr.calibrate();
   }
+  digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
 
+  // print the calibration minimum values measured when emitters were on
+  Serial.begin(9600);
+  for (uint8_t i = 0; i < SensorCount; i++){
+    Serial.print(qtr.calibrationOn.minimum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+
+  // print the calibration maximum values measured when emitters were on
+  for (uint8_t i = 0; i < SensorCount; i++){
+    Serial.print(qtr.calibrationOn.maximum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+  Serial.println();
+  delay(1000);
+  // ------------------------------------------------------------------------------------------------
+
+  // Configuración del giroscopio
   Wire.begin();
   sensor.initialize();
   if (sensor.testConnection()) {
@@ -244,37 +271,27 @@ void setup() {
   pinMode(pinGreen, OUTPUT);
   pinMode(pinBlue, OUTPUT);
   setColor(0, 0, 0);  // Apagar al iniciar
+  // Apagar todos los colores al iniciar (para ánodo común, HIGH apaga)
+  digitalWrite(pinRed, HIGH);
+  digitalWrite(pinGreen, HIGH);
+  digitalWrite(pinBlue, HIGH);
 }
 
+
+
+// ------------------------------------- Loop -------------------------------------
 void loop() {
-  int rojo = getRojo();
-  int azul = getAzul();
-  int verde = getVerde();
-
-  // Activar seguidor de línea si se detecta rojo
-  if (rojo > 1000) { 
-    seguidorDeLinea();
-  }
-  
-  // Desactivar seguidor si se detecta azul
-  if (azul > 1000) {
-    motorIzq.apagar();
-    motorDer.apagar();
-  }
-
-  // Realizar laberinto con pelota si se detecta verde
-  if (verde > 1000) {
-    laberintoPelota();
-  }
+  seguidorDeLinea();
 }
+
 
 // ------------------------ Funciones Principales (Retos) -------------------------
 void seguidorDeLinea() {
-  // Leer los valores de los sensores IR
-  qtra.read(IR);
+  // Leer los valores de los sensores
+  uint16_t position = qtr.readLineBlack(sensorValues);
 
   // Cálculo del error ponderado de la línea, basado en los sensores
-  error = -7 * IR[0] - 5 * IR[1] - 3 * IR[2] - IR[3] + IR[4] + 3 * IR[5] + 5 * IR[6] + 7 * IR[7];
+  error = -7 * sensorValues[0] - 5 * sensorValues[1] - 3 * sensorValues[2] - sensorValues[3] + sensorValues[4] + 3 * sensorValues[5] + 5 * sensorValues[6] + 7 * sensorValues[7];
 
   // Suma del error para el término integral
   i += error;
@@ -298,7 +315,9 @@ void seguidorDeLinea() {
   avanzar(v - PID, v + PID);
 }
 
-void laberintoPelota() {
+
+
+void laberintoPelota() { // Pendiente de Revisar
   bool pelotaRecogida = false;  // Estado para verificar si la pelota fue recogida
   float distanciaAvanzada = 0;
   
@@ -362,7 +381,20 @@ void laberintoPelota() {
   }
 }
 
+
+
 // ------------------------ Todas las funciones auxiliares ------------------------
+
+// Función para detectar línea negra
+bool detectarLineaNegra() {
+  uint16_t position = qtr.readLineBlack(sensorValues);
+  for (uint8_t i = 0; i < SensorCount; i++) {
+    if (sensorValues[i] <= 500) { // Si detecta línea negra
+      return true; // Devuelve verdadero
+    }
+  }
+  return false;  // Si no detecta línea negra
+}
 
 // Función para ajustar la velocidad de los motores
 void avanzar(int left, int right) {
@@ -431,4 +463,15 @@ void setColor(int red, int green, int blue) {
   analogWrite(pinRed, 255 - red);  // Anodo común
   analogWrite(pinGreen, 255 - green);
   analogWrite(pinBlue, 255 - blue);
+}
+
+// ------------------------ Funciones de Prueba ------------------------
+void pruebaSensores() {
+  // Prueba de los sensores QTR
+  uint16_t position = qtr.readLineBlack(sensorValues);
+  for (uint8_t i = 0; i < SensorCount; i++) {
+    Serial.print(sensorValues[i]);
+    Serial.print('\t');
+  }
+  Serial.println();
 }
