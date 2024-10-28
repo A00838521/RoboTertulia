@@ -37,7 +37,7 @@ class Motor {
       ENA = ena;
       velocidadMin = vMin;
       velocidadMax = vMax;
-      velocidad = vMax; // Iniciar con la velocidad mínima
+      velocidad = vMax; // Iniciar con la velocidad máxima
       
       kp = _kp;
       ki = _ki;
@@ -81,20 +81,31 @@ class Motor {
       pulsos = 0;
     }
 
-    // Calcular PID
-    void controlarPID(float setpoint) {
-      float error = setpoint - calcularRevoluciones();
-      float dt = (millis() - tiempoAnterior) / 1000.0;  // Tiempo en segundos
+    // // Calcular PID
+    // void controlarPID(float setpoint) {
+    //   float error = setpoint - calcularRevoluciones();
+    //   float dt = (millis() - tiempoAnterior) / 1000.0;  // Tiempo en segundos
 
-      integral += error * dt;
-      float derivada = (error - errorAnterior) / dt;
-      float salida = (kp * error) + (ki * integral) + (kd * derivada);
+    //   integral += error * dt;
 
-      cambiarVelocidad(constrain(salida, velocidadMin, velocidadMax));
+    //   // Limitar el valor de la integral para evitar sobrecarga de acumulación
+    //   float integralLimit = 50;  // Ajusta este límite según sea necesario
+    //   integral = constrain(integral, -integralLimit, integralLimit);
 
-      errorAnterior = error;
-      tiempoAnterior = millis();
-    }
+    //   float derivada = (error - errorAnterior) / dt;
+    //   float salida = (kp * error) + (ki * integral) + (kd * derivada);
+
+    //   // Aumentar ligeramente la velocidad si el PID calcula valores cercanos a velocidadMin
+    //   if (salida < velocidadMin + 10) {  // 10 es el umbral; ajústalo según necesidad
+    //     salida += 10;  // Incremento mínimo
+    //   }
+
+    //   cambiarVelocidad(constrain(salida, velocidadMin, velocidadMax));
+
+    //   errorAnterior = error;
+    //   tiempoAnterior = millis();
+    // }
+
 
     // Giro horario
     void giroHorario() {
@@ -122,14 +133,13 @@ class Motor {
 
     // Cambiar velocidad con límites (min y max)
     void cambiarVelocidad(int nuevaVelocidad) {
-      if (nuevaVelocidad >= velocidadMin && nuevaVelocidad <= velocidadMax) {
-        velocidad = nuevaVelocidad;
-        Serial.print(F("Se cambió la velocidad a: "));
-        Serial.println(velocidad);
-      } else {
-        Serial.println(F("Velocidad fuera de los límites permitidos."));
-      }
+      // Asegurar que la velocidad sea como mínimo la permitida
+      velocidad = max(nuevaVelocidad, velocidadMin);
+      analogWrite(ENA, velocidad);
+      Serial.print(F("Velocidad ajustada a: "));
+      Serial.println(velocidad);
     }
+
     
     // Función para avanzar un número específico de revoluciones
     void avanzarRevoluciones(float revoluciones, bool sentidoHorario) {
@@ -138,7 +148,13 @@ class Motor {
       float setpoint = revoluciones;
       
       while (calcularRevoluciones() < setpoint) {
-        //controlarPID(setpoint);
+        
+        // Aumentar temporalmente la velocidad inicial para asegurar el inicio del movimiento
+        if (calcularRevoluciones() == 0) {
+          cambiarVelocidad(velocidadMin + 20);  // Incremento inicial para arrancar
+        }
+
+        // controlarPID(setpoint);
         
         // Girar en sentido horario o antihorario según el motor
         if (sentidoHorario) {
@@ -206,52 +222,52 @@ int i = 0;           // Acumulador para el término integral
 int d = 0;           // Cambio en el error para el término derivativo
 
 // Variables para motores
-int vMin = 100;        // Velocidad mínima
-int vMax = 300;      // Límite superior de la velocidad
+int vMin = 0;        // Velocidad mínima
+int vMax = 255;      // Límite superior de la velocidad
 
 // Definición de motores
-Motor motorIzq(2, 3, 4, 23, 22, vMin, vMax, 0.1, 0.01, 0.05, 360);  // Motor izquierdo
-Motor motorDer(6, 7, 5, 24, 25, vMin, vMax, 0.1, 0.01, 0.05, 360); // Motor derecho
+Motor motorIzq(2, 6, 4, 23, 44, vMin, vMax, 80, 10, 15, 360);  // Motor izquierdo
+Motor motorDer(3, 7, 5, 24, 45, vMin, vMax, 0.2, 0.005, 0.05, 360); // Motor derecho
 
 
 
 
 // ------------------------------------------- Setup -----------------------------------------
 void setup() {
-  // ------------------------------------ Sensor QTR -------------------------------------------
-  qtr.setTypeAnalog();
-  qtr.setSensorPins((const uint8_t[]){A4, A5, A6, A7, A8, A9, A10, A11}, SensorCount);
-  qtr.setEmitterPin(35);
+  // // ------------------------------------ Sensor QTR -------------------------------------------
+  // qtr.setTypeAnalog();
+  // qtr.setSensorPins((const uint8_t[]){A4, A5, A6, A7, A8, A9, A10, A11}, SensorCount);
+  // qtr.setEmitterPin(35);
 
-  delay(250);
-  setColor(0, 255, 0);  // Encender LED RGB al iniciar
+  // delay(250);
+  // setColor(0, 255, 0);  // Encender LED RGB al iniciar
 
-  // analogRead() takes about 0.1 ms on an AVR.
-  // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors * 10 reads per calibrate() call = ~24 ms per calibrate() call.
-  // Call calibrate() 400 times to make calibration take about 10 seconds.
-  for (uint16_t i = 0; i < 400; i++){
-    qtr.calibrate();
-  }
-  digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
+  // // analogRead() takes about 0.1 ms on an AVR.
+  // // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors * 10 reads per calibrate() call = ~24 ms per calibrate() call.
+  // // Call calibrate() 400 times to make calibration take about 10 seconds.
+  // for (uint16_t i = 0; i < 400; i++){
+  //   qtr.calibrate();
+  // }
+  // digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
 
-  // print the calibration minimum values measured when emitters were on
+  // // print the calibration minimum values measured when emitters were on
   Serial.begin(9600);
-  for (uint8_t i = 0; i < SensorCount; i++){
-    Serial.print(qtr.calibrationOn.minimum[i]);
-    Serial.print(' ');
-  }
-  Serial.println();
+  // for (uint8_t i = 0; i < SensorCount; i++){
+  //   Serial.print(qtr.calibrationOn.minimum[i]);
+  //   Serial.print(' ');
+  // }
+  // Serial.println();
 
-  // print the calibration maximum values measured when emitters were on
-  for (uint8_t i = 0; i < SensorCount; i++){
-    Serial.print(qtr.calibrationOn.maximum[i]);
-    Serial.print(' ');
-  }
-  Serial.println();
-  Serial.println();
-  setColor(0, 0, 0);  // Apagar al iniciar
-  delay(1000);
-  // ------------------------------------------------------------------------------------------------
+  // // print the calibration maximum values measured when emitters were on
+  // for (uint8_t i = 0; i < SensorCount; i++){
+  //   Serial.print(qtr.calibrationOn.maximum[i]);
+  //   Serial.print(' ');
+  // }
+  // Serial.println();
+  // Serial.println();
+  // setColor(0, 0, 0);  // Apagar al iniciar
+  // delay(1000);
+  // // ------------------------------------------------------------------------------------------------
 
   // Configuración del giroscopio
   Wire.begin();
@@ -286,11 +302,8 @@ void setup() {
 
 // ------------------------------------- Loop -------------------------------------
 void loop() {
-  motorIzq.cambiarVelocidad(250);
-  motorDer.cambiarVelocidad(250);
-  estados(1);
-  avanzarMotoresSincronizados(motorIzq, motorDer, 2, 2, true, true);
-  avanzarMotoresSincronizados(motorIzq, motorDer, 2, 2, false, false);
+  // motorIzq.cambiarVelocidad(255);
+  motorIzq.avanzarRevoluciones(2, true);
 }
 
 
@@ -326,60 +339,60 @@ void seguidorDeLinea() {
 
 
 
-void laberintoPelota() { // Pendiente de Revisar
-  bool pelotaRecogida = false;  // Estado para verificar si la pelota fue recogida
-  float distanciaAvanzada = 0;
+// void laberintoPelota() { // Pendiente de Revisar
+//   bool pelotaRecogida = false;  // Estado para verificar si la pelota fue recogida
+//   float distanciaAvanzada = 0;
   
-  while (true) {
-    distanciaAvanzada = 0;  // Reinicia el contador
-    // Paso 1: Avanza 30 cm
-    avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);
-    distanciaAvanzada += 30;
+//   while (true) {
+//     distanciaAvanzada = 0;  // Reinicia el contador
+//     // Paso 1: Avanza 30 cm
+//     avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);
+//     distanciaAvanzada += 30;
     
-    // Cada 15 cm, verifica si hay línea negra
-    if (distanciaAvanzada >= 15) {
-      if (detectarLineaNegra()) {
-        // Si ya se recogió la pelota y detecta línea negra
-        if (pelotaRecogida) {
-          avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 20 cm
-          avanzarMotoresSincronizados(motorIzq, motorDer, 1.7, 1.7, true, true);  // Gira 180 grados
-        } else {
-          avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 15 cm
-          avanzarMotoresSincronizados(motorIzq, motorDer, 1.7, 1.7, true, true);  // Gira 180 grados
-          continue;  // Vuelve a intentar avanzar
-        }
-      }
-      distanciaAvanzada = 0;  // Reinicia el contador
-    }
+//     // Cada 15 cm, verifica si hay línea negra
+//     if (distanciaAvanzada >= 15) {
+//       if (detectarLineaNegra()) {
+//         // Si ya se recogió la pelota y detecta línea negra
+//         if (pelotaRecogida) {
+//           avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 20 cm
+//           avanzarMotoresSincronizados(motorIzq, motorDer, 1.7, 1.7, true, true);  // Gira 180 grados
+//         } else {
+//           avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 15 cm
+//           avanzarMotoresSincronizados(motorIzq, motorDer, 1.7, 1.7, true, true);  // Gira 180 grados
+//           continue;  // Vuelve a intentar avanzar
+//         }
+//       }
+//       distanciaAvanzada = 0;  // Reinicia el contador
+//     }
 
-    // Paso 2: Detección con sensor ultrasónico frontal
-    if (leerDistanciaUltrasonico(trigPin2, echoPin2) <= 10) {
-      // Hay pared en frente
-      if (leerDistanciaUltrasonico(trigPin1, echoPin1) <= 10) {
-        // Pared a la derecha, gira a la derecha
-        avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, false);  // Gira a la izquierda
-      } else {
-        // No hay pared a la derecha, gira y avanza
-        avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, true);  // Gira a la derecha
-        avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);  // Avanza 15 cm
-      }
-    } else {
-      // No hay pared en frente, avanzar 15 cm y recoger la pelota
-      avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);  // Avanza 15 cm
-      Serial.println("Recojo pelota");
-      pelotaRecogida = true;  // Cambia el estado a recogido
-      avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 15 cm
-    }
+//     // Paso 2: Detección con sensor ultrasónico frontal
+//     if (leerDistanciaUltrasonico(trigPin2, echoPin2) <= 10) {
+//       // Hay pared en frente
+//       if (leerDistanciaUltrasonico(trigPin1, echoPin1) <= 10) {
+//         // Pared a la derecha, gira a la derecha
+//         avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, false);  // Gira a la izquierda
+//       } else {
+//         // No hay pared a la derecha, gira y avanza
+//         avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, true);  // Gira a la derecha
+//         avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);  // Avanza 15 cm
+//       }
+//     } else {
+//       // No hay pared en frente, avanzar 15 cm y recoger la pelota
+//       avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);  // Avanza 15 cm
+//       Serial.println("Recojo pelota");
+//       pelotaRecogida = true;  // Cambia el estado a recogido
+//       avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 15 cm
+//     }
 
-    // Detección del color rojo
-    if (getRojo() > 1000) {
-      Serial.println("Color rojo detectado, función terminada.");
-      motorIzq.apagar();
-      motorDer.apagar();
-      break;  // Termina el ciclo
-    }
-  }
-}
+//     // Detección del color rojo
+//     if (getRojo() > 1000) {
+//       Serial.println("Color rojo detectado, función terminada.");
+//       motorIzq.apagar();
+//       motorDer.apagar();
+//       break;  // Termina el ciclo
+//     }
+//   }
+// }
 
 
 
@@ -389,7 +402,7 @@ void laberintoPelota() { // Pendiente de Revisar
 bool detectarLineaNegra() {
   uint16_t position = qtr.readLineBlack(sensorValues);
   for (uint8_t i = 0; i < SensorCount; i++) {
-    if (sensorValues[i] >= 600) { // Si detecta línea negra
+    if (sensorValues[i] >= 400) { // Si detecta línea negra
       return true; // Devuelve verdadero
     }
   }
@@ -421,6 +434,8 @@ void avanzarMotoresSincronizados(Motor& motor1, Motor& motor2, float revolucione
       // Si el motor 1 aún no alcanza el setpoint, avanza con el control PID
       if (motor1.calcularRevoluciones() < setpoint1) {
           // motor1.controlarPID(setpoint1);
+          motorIzq.leerEncoder();
+          motorDer.leerEncoder();
           if (sentidoHorarioMotor1) {
               motor1.giroHorario();
           } else {
@@ -433,6 +448,8 @@ void avanzarMotoresSincronizados(Motor& motor1, Motor& motor2, float revolucione
       // Si el motor 2 aún no alcanza el setpoint, avanza con el control PID
       if (motor2.calcularRevoluciones() < setpoint2) {
           // motor2.controlarPID(setpoint2);
+          motorIzq.leerEncoder();
+          motorDer.leerEncoder();
           if (sentidoHorarioMotor2) {
               motor2.giroHorario();
           } else {
@@ -453,10 +470,10 @@ void avanzarMotoresSincronizados(Motor& motor1, Motor& motor2, float revolucione
 void motorsOFF() {
   motorDer.apagar();
   motorIzq.apagar();
-  delay(10);
+  delay(1);
   motorDer.giroHorario();
   motorIzq.giroAntihorario();
-  delay(10);
+  delay(1);
   motorDer.apagar();
   motorIzq.apagar();
 }
