@@ -222,10 +222,12 @@ int i = 0;           // Acumulador para el término integral
 int d = 0;           // Cambio en el error para el término derivativo
 
 // Variables para motores
-int vMin = 0;        // Velocidad mínima
+int vMin = 60;        // Velocidad mínima
 int vMax = 255;      // Límite superior de la velocidad
+int v = 150;
 
 // Definición de motores
+// - Las constantes de PID se dejaron de usar, sin embargo las mantengo como prueba de que se intento implementar sin exito.
 Motor motorIzq(2, 6, 4, 23, 44, vMin, vMax, 80, 10, 15, 360);  // Motor izquierdo
 Motor motorDer(3, 7, 5, 24, 45, vMin, vMax, 0.2, 0.005, 0.05, 360); // Motor derecho
 
@@ -302,8 +304,12 @@ void setup() {
 
 // ------------------------------------- Loop -------------------------------------
 void loop() {
-  // motorIzq.cambiarVelocidad(255);
-  motorIzq.avanzarRevoluciones(2, true);
+  // estados(1);
+  readGyroData();
+  delay(1000);
+  Serial.println("-------------------");
+  // antiwallMovement(motorIzq, motorDer);
+  // avanzarMotoresSincronizados(motorIzq, motorDer, 2, 2, true, false);
 }
 
 
@@ -419,79 +425,128 @@ void avanzar(int left, int right) {
   motorDer.giroAntihorario();
 }
 
+// Función para avanzar y evitar las paredes
+void antiwallMovement(Motor& motor1, Motor& motor2) {
+    const int minDist = 10; // Distancia mínima en cm para corrección
+
+    // Variables para almacenar la distancia a los objetos detectados
+    Serial.print("Frente ");
+    int distFront = getDistance(trigPin2, echoPin2);
+    Serial.print("Izquierda ");
+    int distLeft = getDistance(trigPin3, echoPin3);
+    Serial.print("Derecha ");
+    int distRight = getDistance(trigPin1, echoPin1);
+
+    // Corrección si hay obstáculos a los lados
+    if (distLeft < minDist) {
+        // Obstáculo a la izquierda, realizar un giro suave a la derecha
+        Serial.println("Correccion Pared IZQUIERDA");
+        avanzarMotoresSincronizados(motor1, motor2, 1, 0, true, false); // Revoluciones ajustadas para giro suave
+    } else if (distRight < minDist) {
+        // Obstáculo a la derecha, realizar un giro suave a la izquierda
+        Serial.println("Correccion Pared DERECHA");
+        avanzarMotoresSincronizados(motor1, motor2, 0, 1, true, false); // Revoluciones ajustadas para giro suave
+    }
+
+    // Lógica de movimiento
+    if (distFront >= minDist) {
+        // Avanzar en línea recta si no hay obstáculo en el frente
+        Serial.println("Avanzar Recto");
+        avanzarMotoresSincronizados(motor1, motor2, 1, 1, true, false);  // Mismo número de revoluciones para avanzar recto
+    } else {
+        // Si hay un obstáculo al frente, decidir la dirección en función del espacio a los lados
+        if (distLeft > distRight) {
+            // Hay más espacio a la izquierda: girar a la izquierda
+            Serial.println("Avanzar a la Izquierda");
+            avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, true, true); // Giro de 180° a la izquierda
+        } else {
+            // Hay más espacio a la derecha: girar a la derecha
+            Serial.println("Avanzar a la Derecha");
+            avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, false, false); // Giro de 180° a la derecha
+        }
+    }
+}
+
 // Función para avanzar una distancia específica
 void avanzarMotoresSincronizados(Motor& motor1, Motor& motor2, float revolucionesIzq, float revolucionesDer, bool sentidoHorarioMotor1, bool sentidoHorarioMotor2) {
-  // Resetear contador de pulsos en ambos motores
-  motor1.resetearPulsos();
-  motor2.resetearPulsos();
-  
-  // Determinar los setpoints en términos de revoluciones
-  float setpoint1 = revolucionesIzq;
-  float setpoint2 = revolucionesDer;
+    // Resetear contador de pulsos en ambos motores
+    motor1.resetearPulsos();
+    motor2.resetearPulsos();
+    
+    // Determinar los setpoints en términos de revoluciones
+    float setpoint1 = revolucionesIzq;
+    float setpoint2 = revolucionesDer;
+    
+    // Calcula la relación de velocidad para sincronizar ambos motores
+    float velocidadBase1 = (setpoint1 > setpoint2) ? v : ((setpoint1 / setpoint2) * v);
+    float velocidadBase2 = (setpoint2 > setpoint1) ? v : ((setpoint2 / setpoint1) * v);
 
-  // Bucle que permite avanzar ambos motores en paralelo
-  while (motor1.calcularRevoluciones() < setpoint1 || motor2.calcularRevoluciones() < setpoint2) {
-      // Si el motor 1 aún no alcanza el setpoint, avanza con el control PID
-      if (motor1.calcularRevoluciones() < setpoint1) {
-          // motor1.controlarPID(setpoint1);
-          motorIzq.leerEncoder();
-          motorDer.leerEncoder();
-          if (sentidoHorarioMotor1) {
-              motor1.giroHorario();
-          } else {
-              motor1.giroAntihorario();
-          }
-      } else {
-          motor1.apagar(); // Apaga el motor cuando llega al setpoint
-      }
+    // Bucle para avanzar ambos motores en paralelo
+    while (motor1.calcularRevoluciones() < setpoint1 || motor2.calcularRevoluciones() < setpoint2) {
+        // Lee la cantidad de revoluciones actual
+        float revsMotor1 = motor1.calcularRevoluciones();
+        float revsMotor2 = motor2.calcularRevoluciones();
 
-      // Si el motor 2 aún no alcanza el setpoint, avanza con el control PID
-      if (motor2.calcularRevoluciones() < setpoint2) {
-          // motor2.controlarPID(setpoint2);
-          motorIzq.leerEncoder();
-          motorDer.leerEncoder();
-          if (sentidoHorarioMotor2) {
-              motor2.giroHorario();
-          } else {
-              motor2.giroAntihorario();
-          }
-      } else {
-          motor2.apagar(); // Apaga el motor cuando llega al setpoint
-      }
-  }
+        // Ajusta la velocidad del motor que va más rápido
+        if (revsMotor1 > revsMotor2) {
+            motor1.cambiarVelocidad(velocidadBase1 * 0.8);  // Reduce velocidad del motor 1 al 80%
+            motor2.cambiarVelocidad(velocidadBase2);         // Mantiene velocidad del motor 2
+        } else if (revsMotor2 > revsMotor1) {
+            motor2.cambiarVelocidad(velocidadBase2 * 0.8);  // Reduce velocidad del motor 2 al 80%
+            motor1.cambiarVelocidad(velocidadBase1);         // Mantiene velocidad del motor 1
+        } else {
+            // Ambos motores avanzan a la velocidad base si están sincronizados
+            motor1.cambiarVelocidad(velocidadBase1);
+            motor2.cambiarVelocidad(velocidadBase2);
+        }
 
-  // Asegurarse de que ambos motores se apaguen al finalizar
-  // motor1.apagar();
-  // motor2.apagar();
-  motorsOFF();
+        // Control del sentido y avance de los motores
+        if (revsMotor1 < setpoint1) {
+            if (sentidoHorarioMotor1) motor1.giroHorario();
+            else motor1.giroAntihorario();
+        } else motor1.apagar();  // Apaga el motor cuando llega al setpoint
+
+        if (revsMotor2 < setpoint2) {
+            if (sentidoHorarioMotor2) motor2.giroHorario();
+            else motor2.giroAntihorario();
+        } else motor2.apagar();  // Apaga el motor cuando llega al setpoint
+    }
+
+
+    // Asegurarse de que ambos motores se apaguen al finalizar
+    motorsOFF();
 }
 
 // Función para apagar los motores Frenado Seco
 void motorsOFF() {
-  motorDer.apagar();
   motorIzq.apagar();
-  delay(1);
-  motorDer.giroHorario();
-  motorIzq.giroAntihorario();
-  delay(1);
   motorDer.apagar();
-  motorIzq.apagar();
+  delay(1);
+  // motorDer.giroHorario();
+  // motorIzq.giroAntihorario();
+  // delay(1);
+  // motorDer.apagar();
+  // motorIzq.apagar();
 }
 
 // Funciones para el sensor ultrasónico
-float leerDistanciaUltrasonico(int trigPin, int echoPin) {
+float getDistance(int trigPin, int echoPin) {
   // Enviar un pulso de ultrasonido
+  pinMode(trigPin, OUTPUT);  
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
   delayMicroseconds(10);
   digitalWrite(trigPin, LOW);
+  pinMode(echoPin, INPUT);
 
   // Leer el tiempo del eco
   long duration = pulseIn(echoPin, HIGH);
 
   // Calcular la distancia en cm
   float distancia = (duration * 0.0343) / 2;
+  Serial.print("Distancia: ");
+  Serial.println(distancia);
   return distancia;
 }
 
