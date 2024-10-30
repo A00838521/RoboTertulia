@@ -245,7 +245,7 @@ Motor motorDer(3, 7, 5, 24, 45, vMin, vMax, 0.2, 0.005, 0.05, 360); // Motor der
 
 int ultimoColor = -1;      // Almacena el último color detectado para mantener el LED encendido
 
-int count = 3;
+int count = 1;
 
 // ------------------------------------------- Setup -----------------------------------------
 void setup() {
@@ -407,6 +407,8 @@ int minMoradoR, maxMoradoR, minMoradoG, maxMoradoG, minMoradoB, maxMoradoB;
 int minRojoR, maxRojoR, minRojoG, maxRojoG, minRojoB, maxRojoB;
 int minNegroR, maxNegroR, minNegroG, maxNegroG, minNegroB, maxNegroB;
 int minBlancoR, maxBlancoR, minBlancoG, maxBlancoG, minBlancoB, maxBlancoB;
+int minVerdeR, maxVerdeR, minVerdeG, maxVerdeG, minVerdeB, maxVerdeB;
+int minAzulR, maxAzulR, minAzulG, maxAzulG, minAzulB, maxAzulB;
 
 // Función para calibrar un color
 void calibrarColor(int &minR, int &maxR, int &minG, int &maxG, int &minB, int &maxB) {
@@ -424,12 +426,6 @@ void calibrarColor(int &minR, int &maxR, int &minG, int &maxG, int &minB, int &m
   digitalWrite(s3, HIGH);
   frecuenciaAzul = pulseIn(out, LOW);
   
-  // Imprimir las frecuencias actuales
-  Serial.println("Este es el valor de las calibracion");
-  Serial.print("Frecuencia Rojo: "); Serial.println(frecuenciaRojo);
-  Serial.print("Frecuencia Verde: "); Serial.println(frecuenciaVerde);
-  Serial.print("Frecuencia Azul: "); Serial.println(frecuenciaAzul);
-  Serial.print("//////////////");
   if(count == 1) {
       // Ajustar rango con ±10 %
     minR = frecuenciaRojo * 0.7;
@@ -477,12 +473,26 @@ void iniciarCalibracion() {
     calibrarColor(minNegroR, maxNegroR, minNegroG, maxNegroG, minNegroB, maxNegroB);
     delay(3000);
 
-
     // Calibrar color Blanco
     Serial.println("Coloca el sensor sobre el color Blanco");
     delay(7000);
     calibrarColor(minBlancoR, maxBlancoR, minBlancoG, maxBlancoG, minBlancoB, maxBlancoB);
     delay(3000);
+
+    // Calibrar color Verde
+    Serial.println("Coloca el sensor sobre el color Verde");
+    delay(7000);
+    calibrarColor(minVerdeR, maxVerdeR, minVerdeG, maxVerdeG, minVerdeB, maxVerdeB);
+    delay(3000);
+
+    // Calibrar color Azul
+    Serial.println("Coloca el sensor sobre el color Azul");
+    delay(7000);
+    calibrarColor(minAzulR, maxAzulR, minAzulG, maxAzulG, minAzulB, maxAzulB);
+    delay(3000);
+
+
+
   
 }
 
@@ -504,24 +514,12 @@ int detectarColor() {
   digitalWrite(s3, HIGH);
   frecuenciaAzul = pulseIn(out, LOW);
 
-  // Imprimir las frecuencias actuales
-  Serial.print("Frecuencia Rojo: "); Serial.println(frecuenciaRojo);
-  Serial.print("Frecuencia Verde: "); Serial.println(frecuenciaVerde);
-  Serial.print("Frecuencia Azul: "); Serial.println(frecuenciaAzul);
-
-  // Imprimir valores de calibración
-  Serial.print("Rosa - Rango R: ["); Serial.print(minRosaR); Serial.print(", "); Serial.print(maxRosaR);
-  Serial.print("], G: ["); Serial.print(minRosaG); Serial.print(", "); Serial.print(maxRosaG);
-  Serial.print("], B: ["); Serial.print(minRosaB); Serial.print(", "); Serial.println(maxRosaB);
-
   // Comparar con los rangos calibrados para cada color
   if (frecuenciaRojo >= minRosaR && frecuenciaRojo <= maxRosaR &&
       frecuenciaVerde >= minRosaG && frecuenciaVerde <= maxRosaG &&
       frecuenciaAzul >= minRosaB && frecuenciaAzul <= maxRosaB) {
     encenderLED(255, 0, 127);  // LED Rosa
-    return 1;  // Rosa
-    Serial.println("Es rosa");
-    
+    return 1;  // Rosa    
   }
 
   if (frecuenciaRojo >= minAmarilloR && frecuenciaRojo <= maxAmarilloR &&
@@ -530,7 +528,7 @@ int detectarColor() {
     encenderLED(255, 255, 0);  // LED Amarillo
     return 2;  // Amarillo
   }
-  
+
   if (frecuenciaRojo >= minMoradoR && frecuenciaRojo <= maxMoradoR &&
       frecuenciaVerde >= minMoradoG && frecuenciaVerde <= maxMoradoG &&
       frecuenciaAzul >= minMoradoB && frecuenciaAzul <= maxMoradoB) {
@@ -559,15 +557,24 @@ int detectarColor() {
     return 6;  // Blanco
   }
 
+  // Agregar detección para el color Verde
+  if (frecuenciaRojo >= minVerdeR && frecuenciaRojo <= maxVerdeR &&
+      frecuenciaVerde >= minVerdeG && frecuenciaVerde <= maxVerdeG &&
+      frecuenciaAzul >= minVerdeB && frecuenciaAzul <= maxVerdeB) {
+    encenderLED(0, 255, 0);  // LED Verde
+    return 7;  // Verde
+  }
+
+  // Agregar detección para el color Azul
+  if (frecuenciaRojo >= minAzulR && frecuenciaRojo <= maxAzulR &&
+      frecuenciaVerde >= minAzulG && frecuenciaVerde <= maxAzulG &&
+      frecuenciaAzul >= minAzulB && frecuenciaAzul <= maxAzulB) {
+    encenderLED(0, 0, 255);  // LED Azul
+    return 8;  // Azul
+  }
+
   return -1; // No identificado
 }
-
-
-
-
-
-
-
 
 void encenderLED(int rojo, int verde, int azul) {
   analogWrite(pinRed, rojo);
