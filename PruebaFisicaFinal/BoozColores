@@ -518,42 +518,48 @@ int detectarColor() {
   if (frecuenciaRojo >= minRosaR && frecuenciaRojo <= maxRosaR &&
       frecuenciaVerde >= minRosaG && frecuenciaVerde <= maxRosaG &&
       frecuenciaAzul >= minRosaB && frecuenciaAzul <= maxRosaB) {
-    encenderLED(255, 0, 127);  // LED Rosa
+    setColor(255, 0, 127);  // LED Rosa
+    delay(500);
     return 1;  // Rosa    
   }
 
   if (frecuenciaRojo >= minAmarilloR && frecuenciaRojo <= maxAmarilloR &&
       frecuenciaVerde >= minAmarilloG && frecuenciaVerde <= maxAmarilloG &&
       frecuenciaAzul >= minAmarilloB && frecuenciaAzul <= maxAmarilloB) {
-    encenderLED(255, 255, 0);  // LED Amarillo
+    setColor(255, 255, 0);  // LED Amarillo
+    delay(500);
     return 2;  // Amarillo
   }
 
   if (frecuenciaRojo >= minMoradoR && frecuenciaRojo <= maxMoradoR &&
       frecuenciaVerde >= minMoradoG && frecuenciaVerde <= maxMoradoG &&
       frecuenciaAzul >= minMoradoB && frecuenciaAzul <= maxMoradoB) {
-    encenderLED(128, 0, 128);  // LED Morado
+    setColor(128, 0, 128);  // LED Morado
+    delay(500);
     return 3;  // Morado
   }
 
   if (frecuenciaRojo >= minRojoR && frecuenciaRojo <= maxRojoR &&
       frecuenciaVerde >= minRojoG && frecuenciaVerde <= maxRojoG &&
       frecuenciaAzul >= minRojoB && frecuenciaAzul <= maxRojoB) {
-    encenderLED(255, 0, 0);  // LED Rojo
+    setColor(255, 0, 0);  // LED Rojo
+    delay(500);
     return 4;  // Rojo
   }
 
   if (frecuenciaRojo >= minNegroR && frecuenciaRojo <= maxNegroR &&
       frecuenciaVerde >= minNegroG && frecuenciaVerde <= maxNegroG &&
       frecuenciaAzul >= minNegroB && frecuenciaAzul <= maxNegroB) {
-    encenderLED(0, 0, 0);  // LED Negro (apagado)
+    setColor(0, 0, 0);  // LED Negro (apagado)
+    delay(500);
     return 5;  // Negro
   }
 
   if (frecuenciaRojo >= minBlancoR && frecuenciaRojo <= maxBlancoR &&
       frecuenciaVerde >= minBlancoG && frecuenciaVerde <= maxBlancoG &&
       frecuenciaAzul >= minBlancoB && frecuenciaAzul <= maxBlancoB) {
-    encenderLED(255, 255, 255);  // LED Blanco
+    setColor(255, 255, 255);  // LED Blanco
+    delay(500);
     return 6;  // Blanco
   }
 
@@ -561,7 +567,8 @@ int detectarColor() {
   if (frecuenciaRojo >= minVerdeR && frecuenciaRojo <= maxVerdeR &&
       frecuenciaVerde >= minVerdeG && frecuenciaVerde <= maxVerdeG &&
       frecuenciaAzul >= minVerdeB && frecuenciaAzul <= maxVerdeB) {
-    encenderLED(0, 255, 0);  // LED Verde
+    setColor(0, 255, 0);  // LED Verde
+    delay(500);
     return 7;  // Verde
   }
 
@@ -569,17 +576,19 @@ int detectarColor() {
   if (frecuenciaRojo >= minAzulR && frecuenciaRojo <= maxAzulR &&
       frecuenciaVerde >= minAzulG && frecuenciaVerde <= maxAzulG &&
       frecuenciaAzul >= minAzulB && frecuenciaAzul <= maxAzulB) {
-    encenderLED(0, 0, 255);  // LED Azul
+    setColor(0, 0, 255);  // LED Azul
+    delay(500);
+    
     return 8;  // Azul
   }
 
   return -1; // No identificado
 }
 
-void encenderLED(int rojo, int verde, int azul) {
-  analogWrite(pinRed, rojo);
-  analogWrite(pinGreen, verde);
-  analogWrite(pinBlue, azul);
+void encenderLED(int red, int green, int blue) {
+  analogWrite(pinRed, 255 - red);   // Invertimos el valor para ánodo común
+  analogWrite(pinGreen, 255 - green);
+  analogWrite(pinBlue, 255 - blue);
 }
 
 void apagarLED() {
