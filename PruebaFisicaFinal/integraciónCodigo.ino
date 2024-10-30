@@ -1,8 +1,6 @@
 #include <QTRSensors.h>  // Librería para los sensores de línea QTR
 #include <math.h>        // Librería para funciones matemáticas como exp()
-#include "I2Cdev.h"      // Librería para el bus I2C
-#include "MPU6050.h"     // Librería para el giroscopio MPU6050
-#include "Wire.h"        // Librería para el bus I2C
+#include <Wire.h>        // Librería para comunicación I2C
 
 
 // ------------------------------------ Clase Motor ------------------------------------
@@ -112,8 +110,8 @@ class Motor {
       analogWrite(ENA, velocidad);  // Control de velocidad variable
       digitalWrite(IN1, HIGH);
       digitalWrite(IN2, LOW);
-      Serial.print(F("----Giro Horario a velocidad: "));
-      Serial.println(velocidad);
+      // Serial.print(F("----Giro Horario a velocidad: "));
+      // Serial.println(velocidad);
     }
 
     // Giro antihorario
@@ -121,14 +119,14 @@ class Motor {
       analogWrite(ENA, velocidad);  // Control de velocidad variable
       digitalWrite(IN1, LOW);
       digitalWrite(IN2, HIGH);
-      Serial.print(F("----Giro Antihorario a velocidad: "));
-      Serial.println(velocidad);
+      // Serial.print(F("----Giro Antihorario a velocidad: "));
+      // Serial.println(velocidad);
     }
 
     // Apagar motor
     void apagar() {
       analogWrite(ENA, 0);
-      Serial.println(F("----Motor Apagado----"));
+      // Serial.println(F("----Motor Apagado----"));
     }
 
     // Cambiar velocidad con límites (min y max)
@@ -136,8 +134,8 @@ class Motor {
       // Asegurar que la velocidad sea como mínimo la permitida
       velocidad = max(nuevaVelocidad, velocidadMin);
       analogWrite(ENA, velocidad);
-      Serial.print(F("Velocidad ajustada a: "));
-      Serial.println(velocidad);
+      // Serial.print(F("Velocidad ajustada a: "));
+      // Serial.println(velocidad);
     }
 
     
@@ -197,13 +195,23 @@ const int out = 31;
 
 // Definiciones para el LED RGB
 const int pinRed = 32;
-const int pinGreen = 33;
+const int pinGreen = 38;
 const int pinBlue = 34;
 
 // Inicialización del giroscopio
-MPU6050 sensor;
-int ax, ay, az;
-int gx, gy, gz;
+const int MPU = 0x68; // MPU6050 I2C address
+float AccX, AccY, AccZ;
+float GyroX, GyroY, GyroZ;
+float accAngleX, accAngleY, gyroAngleX, gyroAngleY, gyroAngleZ;
+float roll, pitch, yaw;
+float elapsedTime, currentTime, previousTime;
+int c = 0;
+const int windowSize = 10;
+float yawWindow[windowSize] = {0.0};
+float pitchWindow[windowSize] = {0.0};
+int windowIndex = 0;
+float yawSum = 0.0;
+float pitchSum = 0.0;
 
 // Definición del sensor QTR
 QTRSensors qtr;
@@ -211,10 +219,14 @@ const uint8_t SensorCount = 8;
 uint16_t sensorValues[SensorCount];
 
 // PID
-const float kp = 0.2;   // Constante proporcional
-const float ki = 0.0003; // Constante integral
-const float kd = 0.2;   // Constante derivativa
-const float kv = 0.07;  // Constante de velocidad (decaimiento exponencial)
+// const float kp = 0.04;   // Constante proporcional
+// const float ki = 0.0003; // Constante integral
+// const float kd = 0.2;   // Constante derivativa
+// const float kv = 0.07;  // Constante de velocidad (decaimiento exponencial)
+const float kp = 0.0;   // Constante proporcional
+const float ki = 0.0; // Constante integral
+const float kd = 0.0;   // Constante derivativa
+const float kv = 0.0;  // Constante de velocidad (decaimiento exponencial)
 
 float error = 0;     // Error ponderado
 int lastError = 0;   // Último error
@@ -236,49 +248,56 @@ Motor motorDer(3, 7, 5, 24, 45, vMin, vMax, 0.2, 0.005, 0.05, 360); // Motor der
 
 // ------------------------------------------- Setup -----------------------------------------
 void setup() {
-  // // ------------------------------------ Sensor QTR -------------------------------------------
-  // qtr.setTypeAnalog();
-  // qtr.setSensorPins((const uint8_t[]){A4, A5, A6, A7, A8, A9, A10, A11}, SensorCount);
-  // qtr.setEmitterPin(35);
+  // ------------------------------------ Sensor QTR -------------------------------------------
+  qtr.setTypeAnalog();
+  qtr.setSensorPins((const uint8_t[]){A4, A5, A6, A7, A8, A9, A10, A11}, SensorCount);
+  qtr.setEmitterPin(35);
 
-  // delay(250);
-  // setColor(0, 255, 0);  // Encender LED RGB al iniciar
+  delay(250);
+  setColor(0, 255, 0);  // Encender LED RGB al iniciar
 
-  // // analogRead() takes about 0.1 ms on an AVR.
-  // // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors * 10 reads per calibrate() call = ~24 ms per calibrate() call.
-  // // Call calibrate() 400 times to make calibration take about 10 seconds.
-  // for (uint16_t i = 0; i < 400; i++){
-  //   qtr.calibrate();
-  // }
-  // digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
+  // analogRead() takes about 0.1 ms on an AVR.
+  // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors * 10 reads per calibrate() call = ~24 ms per calibrate() call.
+  // Call calibrate() 400 times to make calibration take about 10 seconds.
+  for (uint16_t i = 0; i < 400; i++){
+    qtr.calibrate();
+  }
+  digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
 
-  // // print the calibration minimum values measured when emitters were on
-  Serial.begin(9600);
-  // for (uint8_t i = 0; i < SensorCount; i++){
-  //   Serial.print(qtr.calibrationOn.minimum[i]);
-  //   Serial.print(' ');
-  // }
-  // Serial.println();
+  // print the calibration minimum values measured when emitters were on
+  Serial.begin(19200);
+  for (uint8_t i = 0; i < SensorCount; i++){
+    Serial.print(qtr.calibrationOn.minimum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
 
-  // // print the calibration maximum values measured when emitters were on
-  // for (uint8_t i = 0; i < SensorCount; i++){
-  //   Serial.print(qtr.calibrationOn.maximum[i]);
-  //   Serial.print(' ');
-  // }
-  // Serial.println();
-  // Serial.println();
-  // setColor(0, 0, 0);  // Apagar al iniciar
-  // delay(1000);
-  // // ------------------------------------------------------------------------------------------------
+  // print the calibration maximum values measured when emitters were on
+  for (uint8_t i = 0; i < SensorCount; i++){
+    Serial.print(qtr.calibrationOn.maximum[i]);
+    Serial.print(' ');
+  }
+  Serial.println();
+  Serial.println();
+  setColor(0, 0, 0);  // Apagar al iniciar
+  delay(1000);
+  // ------------------------------------------------------------------------------------------------
 
   // Configuración del giroscopio
-  Wire.begin();
-  sensor.initialize();
-  if (sensor.testConnection()) {
-    Serial.println("Giroscopio iniciado correctamente.");
-  } else {
-    Serial.println("Error al iniciar giroscopio.");
-  }
+  Wire.begin();                      // Initialize comunication
+  Wire.beginTransmission(MPU);       // Start communication with MPU6050 // MPU=0x68
+  Wire.write(0x6B);                  // Talk to the register 6B
+  Wire.write(0x00);                  // Make reset - place a 0 into the 6B register
+  Wire.endTransmission(true);        //end the transmission
+  Wire.beginTransmission(MPU);       // Configure Accelerometer Sensitivity - Full Scale Range (default +/- 2g)
+  Wire.write(0x1C);                  //Talk to the ACCEL_CONFIG register (1C hex)
+  Wire.write(0x10);                  //Set the register bits as 00010000 (+/- 8g full scale range)
+  Wire.endTransmission(true);
+  Wire.beginTransmission(MPU);        // Configure Gyro Sensitivity - Full Scale Range (default +/- 250deg/s)
+  Wire.write(0x1B);                   // Talk to the GYRO_CONFIG register (1B hex)
+  Wire.write(0x10);                   // Set the register bits as 00010000 (1000deg/s full scale)
+  Wire.endTransmission(true);
+  delay(20);
 
   // Configuración del sensor de color
   pinMode(s0, OUTPUT);
@@ -304,12 +323,13 @@ void setup() {
 
 // ------------------------------------- Loop -------------------------------------
 void loop() {
-  // estados(1);
-  readGyroData();
-  delay(1000);
-  Serial.println("-------------------");
+  estados(1);
+  // while(true){
+  //   seguidorDeLinea();
+  //   pruebaSensores();
+  // }
   // antiwallMovement(motorIzq, motorDer);
-  // avanzarMotoresSincronizados(motorIzq, motorDer, 2, 2, true, false);
+  antiwallContinuousMovement(motorIzq, motorDer, v);
 }
 
 
@@ -340,65 +360,17 @@ void seguidorDeLinea() {
   int v = vMin + (vMax - vMin) * exp(-kv * abs(kp * error));
 
   // Ajustar la velocidad de los motores según el valor PID
-  avanzar(v - PID, v + PID);
+  float left = v - PID;
+  float right = v + PID;
+  Serial.print(left); Serial.print("/"); Serial.println(right);
+  avanzar(left, right);
 }
 
 
 
-// void laberintoPelota() { // Pendiente de Revisar
-//   bool pelotaRecogida = false;  // Estado para verificar si la pelota fue recogida
-//   float distanciaAvanzada = 0;
-  
-//   while (true) {
-//     distanciaAvanzada = 0;  // Reinicia el contador
-//     // Paso 1: Avanza 30 cm
-//     avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);
-//     distanciaAvanzada += 30;
-    
-//     // Cada 15 cm, verifica si hay línea negra
-//     if (distanciaAvanzada >= 15) {
-//       if (detectarLineaNegra()) {
-//         // Si ya se recogió la pelota y detecta línea negra
-//         if (pelotaRecogida) {
-//           avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 20 cm
-//           avanzarMotoresSincronizados(motorIzq, motorDer, 1.7, 1.7, true, true);  // Gira 180 grados
-//         } else {
-//           avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 15 cm
-//           avanzarMotoresSincronizados(motorIzq, motorDer, 1.7, 1.7, true, true);  // Gira 180 grados
-//           continue;  // Vuelve a intentar avanzar
-//         }
-//       }
-//       distanciaAvanzada = 0;  // Reinicia el contador
-//     }
-
-//     // Paso 2: Detección con sensor ultrasónico frontal
-//     if (leerDistanciaUltrasonico(trigPin2, echoPin2) <= 10) {
-//       // Hay pared en frente
-//       if (leerDistanciaUltrasonico(trigPin1, echoPin1) <= 10) {
-//         // Pared a la derecha, gira a la derecha
-//         avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, false);  // Gira a la izquierda
-//       } else {
-//         // No hay pared a la derecha, gira y avanza
-//         avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, true);  // Gira a la derecha
-//         avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);  // Avanza 15 cm
-//       }
-//     } else {
-//       // No hay pared en frente, avanzar 15 cm y recoger la pelota
-//       avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);  // Avanza 15 cm
-//       Serial.println("Recojo pelota");
-//       pelotaRecogida = true;  // Cambia el estado a recogido
-//       avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, true);  // Retrocede 15 cm
-//     }
-
-//     // Detección del color rojo
-//     if (getRojo() > 1000) {
-//       Serial.println("Color rojo detectado, función terminada.");
-//       motorIzq.apagar();
-//       motorDer.apagar();
-//       break;  // Termina el ciclo
-//     }
-//   }
-// }
+void laberintoPelota() { // Pendiente de Revisar
+  // Establecer pasos
+}
 
 
 
@@ -417,12 +389,87 @@ bool detectarLineaNegra() {
 
 // Función para ajustar la velocidad de los motores
 void avanzar(int left, int right) {
-  motorIzq.cambiarVelocidad(left);
-  motorDer.cambiarVelocidad(right);
+  motorIzq.cambiarVelocidad(abs(left));
+  motorDer.cambiarVelocidad(abs(right));
 
   // Ambos motores deben girar en sentido horario para avanzar
-  motorIzq.giroHorario();
-  motorDer.giroAntihorario();
+  left <= 0 ? motorIzq.giroHorario() : motorIzq.giroAntihorario();
+  right >= 0 ? motorDer.giroAntihorario() : motorDer.giroHorario();
+}
+
+void rampa(Motor& motor1, Motor& motor2, float velocidadInicial) {
+  float velocidadActual = velocidadInicial;
+    bool subiendo = false;
+    bool desacelerando = false;
+    bool enEquilibrio = false;
+
+    // Calibración inicial para obtener el valor estable de yaw
+    float yawEstable = 0.0;
+    const int numLecturas = 50; // Número de lecturas para obtener un promedio estable
+    for (int i = 0; i < numLecturas; i++) {
+        yawEstable += readGyroData();
+        delay(10);
+    }
+    yawEstable /= numLecturas; // Promedio de las lecturas iniciales
+    Serial.print("Yaw Estable: ");
+    Serial.println(yawEstable);
+
+    // Sensibilidad para detección de cambios
+    float umbralSubida = yawEstable + 0.05;   // Ajusta según pruebas, valor relativo para detectar inicio de subida
+    float umbralNeutral = yawEstable + 0.01;  // Ajuste para valores neutros
+    float umbralDesaceleracion = yawEstable - 0.05; // Para detectar desaceleración
+
+    // Iniciar en el checkpoint, motores apagados
+    motorsOFF();
+    
+    while (!enEquilibrio) {
+        // Leer datos del giroscopio
+        float yaw = readGyroData();
+        Serial.print("Yaw: ");
+        Serial.println(yaw);
+        
+        // Paso 2: Detecta el inicio de la subida con valores mayores al umbral de subida
+        if (!subiendo && yaw > umbralSubida) {
+            subiendo = true;
+            velocidadActual = velocidadInicial;
+            Serial.print(yaw);
+            Serial.println(" Subiendo");
+            motor1.cambiarVelocidad(velocidadActual);
+            motor2.cambiarVelocidad(velocidadActual);
+            // motor1.giroHorario();
+            // motor2.giroAntihorario();
+        }
+        
+        // Paso 3: Sigue avanzando mientras los valores sean neutrales respecto a yawEstable
+        else if (subiendo && fabs(yaw - yawEstable) <= umbralNeutral) {
+            Serial.print(yaw);
+            Serial.println(" Avanzando");
+            motor1.cambiarVelocidad(velocidadActual);
+            motor2.cambiarVelocidad(velocidadActual);
+        }
+
+        // Paso 4: Detecta desaceleración en cuanto los valores caen bajo el umbral de desaceleración
+        else if (yaw <= umbralDesaceleracion && !desacelerando) {
+            subiendo = false;
+            desacelerando = true;
+            velocidadActual *= 0.5; // Disminuye la velocidad a la mitad
+            Serial.print(yaw);
+            Serial.println(" Desacelerando");
+            motor1.cambiarVelocidad(velocidadActual);
+            motor2.cambiarVelocidad(velocidadActual);
+        }
+
+        // Paso 5: Se apaga cuando detecta un cambio positivo cercano al valor estable
+        else if (desacelerando && yaw >= yawEstable) {
+            motorsOFF();
+            Serial.print(yaw);
+            Serial.println(" Equilibrio");
+            enEquilibrio = true; // Salimos del bucle
+            delay(4000); // Espera para estabilizar
+        }
+
+        delay(20); // Pequeña pausa para dar estabilidad en la lectura
+    }
 }
 
 // Función para avanzar y evitar las paredes
@@ -464,6 +511,62 @@ void antiwallMovement(Motor& motor1, Motor& motor2) {
             Serial.println("Avanzar a la Derecha");
             avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, false, false); // Giro de 180° a la derecha
         }
+    }
+}
+
+// Función para avanzar y evitar las paredes de forma continua
+void antiwallContinuousMovement(Motor& motor1, Motor& motor2, int v) {
+    const int minDist = 8; // Distancia mínima en cm para corrección
+
+    // Lógica de movimiento constante
+    while (true) {
+        // Leer las distancias a los obstáculos
+        int distFront = getDistance(trigPin2, echoPin2);
+        int distLeft = getDistance(trigPin3, echoPin3);
+        int distRight = getDistance(trigPin1, echoPin1);
+
+        Serial.print("Frente: "); Serial.println(distFront);
+        Serial.print("Izquierda: "); Serial.println(distLeft);
+        Serial.print("Derecha: "); Serial.println(distRight);
+
+        // Corrección si hay obstáculos a los lados
+        if (distLeft < minDist) {
+            // Obstáculo a la izquierda, realizar un giro suave a la derecha
+            Serial.println("Corrección Pared IZQUIERDA");
+            motor1.cambiarVelocidad(v); // Ajusta la velocidad según tus necesidades
+            motor2.cambiarVelocidad(v * 0.8); // Acelera motor2 para girar a la derecha
+            motor1.giroHorario();
+            motor2.giroAntihorario();
+        } 
+        if (distRight < minDist) {
+            // Obstáculo a la derecha, realizar un giro suave a la izquierda
+            Serial.println("Corrección Pared DERECHA");
+            motor1.cambiarVelocidad(v * 0.8); // Acelera motor1 para girar a la izquierda
+            motor2.cambiarVelocidad(v); // Ajusta la velocidad según tus necesidades
+            motor1.giroHorario();
+            motor2.giroAntihorario();
+        } 
+        if (distFront >= minDist) {
+            // Avanzar en línea recta si no hay obstáculo en el frente
+            Serial.println("Avanzar Recto");
+            motor1.cambiarVelocidad(v); // Mantiene velocidad para avanzar recto
+            motor2.cambiarVelocidad(v); // Mantiene velocidad para avanzar recto
+            motor1.giroHorario();
+            motor2.giroAntihorario();
+        } else {
+            // Si hay un obstáculo al frente, decidir la dirección en función del espacio a los lados
+            if (distLeft > distRight) {
+                // Hay más espacio a la izquierda: girar a la izquierda
+                Serial.println("Girar a la Izquierda");
+                avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, true, true); // Giro de 180° a la izquierda
+            } else {
+                // Hay más espacio a la derecha: girar a la derecha
+                Serial.println("Girar a la Derecha");
+                avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, false, false); // Giro de 180° a la derecha
+            }
+        }
+
+        delay(20); // Pequeña pausa para dar estabilidad en la lectura
     }
 }
 
@@ -570,19 +673,70 @@ int getVerde(){
 }
 
 // Funciones para el giroscopio (MPU6050)
-void readGyroData() {
-  sensor.getAcceleration(&ax, &ay, &az);
-  sensor.getRotation(&gx, &gy, &gz);
-  
-  Serial.print("Acelerometro [x, y, z]: ");
-  Serial.print(ax); Serial.print("\t");
-  Serial.print(ay); Serial.print("\t");
-  Serial.print(az); Serial.println();
+float readGyroData() {
+  // === Read acceleromter data === //
+  Wire.beginTransmission(MPU);
+  Wire.write(0x3B); // Start with register 0x3B (ACCEL_XOUT_H)
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU, 6, true); // Read 6 registers total, each axis value is stored in 2 registers
+  //For a range of +-2g, we need to divide the raw values by 16384, according to the datasheet
+  AccX = (Wire.read() << 8 | Wire.read()) / 16384.0; // X-axis value
+  AccY = (Wire.read() << 8 | Wire.read()) / 16384.0; // Y-axis value
+  AccZ = (Wire.read() << 8 | Wire.read()) / 16384.0; // Z-axis value
+  // Calculating Roll and Pitch from the accelerometer data
+  accAngleX = (atan(AccY / sqrt(pow(AccX, 2) + pow(AccZ, 2))) * 180 / PI) - 0.58; // AccErrorX ~(0.58) See the calculate_IMU_error()custom function for more details
+  accAngleY = (atan(-1 * AccX / sqrt(pow(AccY, 2) + pow(AccZ, 2))) * 180 / PI) + 1.58; // AccErrorY ~(-1.58)
+  // === Read gyroscope data === //
+  previousTime = currentTime;        // Previous time is stored before the actual time read
+  currentTime = millis();            // Current time actual time read
+  elapsedTime = (currentTime - previousTime) / 1000; // Divide by 1000 to get seconds
+  Wire.beginTransmission(MPU);
+  Wire.write(0x43); // Gyro data first register address 0x43
+  Wire.endTransmission(false);
+  Wire.requestFrom(MPU, 6, true); // Read 4 registers total, each axis value is stored in 2 registers
+  GyroX = (Wire.read() << 8 | Wire.read()) / 131.0; // For a 250deg/s range we have to divide first the raw value by 131.0, according to the datasheet
+  GyroY = (Wire.read() << 8 | Wire.read()) / 131.0;
+  GyroZ = (Wire.read() << 8 | Wire.read()) / 131.0;
+  // Correct the outputs with the calculated error values
+  GyroX = GyroX + 0.56; // GyroErrorX ~(-0.56)
+  GyroY = GyroY - 2; // GyroErrorY ~(2)
+  GyroZ = GyroZ + 0.79; // GyroErrorZ ~ (-0.8)
+  // Currently the raw values are in degrees per seconds, deg/s, so we need to multiply by sendonds (s) to get the angle in degrees
+  gyroAngleX = gyroAngleX + GyroX * elapsedTime; // deg/s * s = deg
+  gyroAngleY = gyroAngleY + GyroY * elapsedTime;
+  yaw =  yaw + GyroZ * elapsedTime;
+  // Complementary filter - combine acceleromter and gyro angle values
+  gyroAngleX = 0.98 * gyroAngleX + 0.02 * accAngleX;
+  gyroAngleY = 0.98 * gyroAngleY + 0.02 * accAngleY;
 
-  Serial.print("Giroscopio [x, y, z]: ");
-  Serial.print(gx); Serial.print("\t");
-  Serial.print(gy); Serial.print("\t");
-  Serial.print(gz); Serial.println();
+  roll = gyroAngleX;
+  pitch = gyroAngleY;
+
+  // ----------------
+  yaw = calculateMovingAverage(yaw, yawWindow, windowIndex, yawSum);
+  pitch = calculateMovingAverage(pitch, pitchWindow, windowIndex, pitchSum);
+  // ----------------
+  
+  // Print the values on the serial monitor
+  // Serial.print(roll); // Funciona para direcciones
+  // Serial.print("/");
+  // Serial.println(yaw); // Funciona para la rampa
+  return yaw;
+  delay(20);
+}
+
+// Función para calcular el promedio móvil
+float calculateMovingAverage(float newValue, float* window, int& index, float& sum) {
+    // Restamos el valor más antiguo
+    sum -= window[index];
+    // Agregamos el nuevo valor al índice actual
+    window[index] = newValue;
+    // Sumamos el nuevo valor
+    sum += newValue;
+    // Avanza el índice de la ventana circular
+    index = (index + 1) % windowSize;
+    // Calcula el promedio actual
+    return sum / windowSize;
 }
 
 // Funciones para el LED RGB
