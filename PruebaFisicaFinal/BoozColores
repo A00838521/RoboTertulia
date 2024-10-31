@@ -518,7 +518,7 @@ int detectarColor() {
   if (frecuenciaRojo >= minRosaR && frecuenciaRojo <= maxRosaR &&
       frecuenciaVerde >= minRosaG && frecuenciaVerde <= maxRosaG &&
       frecuenciaAzul >= minRosaB && frecuenciaAzul <= maxRosaB) {
-    setColor(255, 0, 127);  // LED Rosa
+    setColor(255, 102, 255);  // LED Rosa
     delay(500);
     return 1;  // Rosa    
   }
@@ -526,7 +526,7 @@ int detectarColor() {
   if (frecuenciaRojo >= minAmarilloR && frecuenciaRojo <= maxAmarilloR &&
       frecuenciaVerde >= minAmarilloG && frecuenciaVerde <= maxAmarilloG &&
       frecuenciaAzul >= minAmarilloB && frecuenciaAzul <= maxAmarilloB) {
-    setColor(255, 255, 0);  // LED Amarillo
+    setColor(255, 150, 0);  // LED Amarillo
     delay(500);
     return 2;  // Amarillo
   }
@@ -534,7 +534,7 @@ int detectarColor() {
   if (frecuenciaRojo >= minMoradoR && frecuenciaRojo <= maxMoradoR &&
       frecuenciaVerde >= minMoradoG && frecuenciaVerde <= maxMoradoG &&
       frecuenciaAzul >= minMoradoB && frecuenciaAzul <= maxMoradoB) {
-    setColor(128, 0, 128);  // LED Morado
+    setColor(150, 0, 255);  // LED Morado
     delay(500);
     return 3;  // Morado
   }
@@ -578,7 +578,6 @@ int detectarColor() {
       frecuenciaAzul >= minAzulB && frecuenciaAzul <= maxAzulB) {
     setColor(0, 0, 255);  // LED Azul
     delay(500);
-    
     return 8;  // Azul
   }
 
