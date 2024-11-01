@@ -1,7 +1,7 @@
 #include <QTRSensors.h>  // Librería para los sensores de línea QTR
 #include <math.h>        // Librería para funciones matemáticas como exp()
 #include <Wire.h>        // Librería para comunicación I2C
-
+#include <ServoTimer2.h> // Librería para controlar el servo
 
 // ------------------------------------ Clase Motor ------------------------------------
 class Motor {
@@ -186,6 +186,9 @@ Motor* Motor::instanciaActual = nullptr;
 #define trigPin3 26 // Izquierda
 #define echoPin3 8  // Izquierda
 
+#define servoPin 13 // Pin para el servo
+ServoTimer2 servoMotor; // Crear un objeto de la clase ServoTimer2
+
 // Definiciones para el sensor de color
 const int s0 = 29;
 const int s1 = 11;
@@ -248,39 +251,43 @@ Motor motorDer(3, 7, 5, 24, 45, vMin, vMax, 0.2, 0.005, 0.05, 360); // Motor der
 
 // ------------------------------------------- Setup -----------------------------------------
 void setup() {
+  // Configuración del servo
+  servoMotor.attach(servoPin);
+  servoMotor.write(2000);
+  
   // ------------------------------------ Sensor QTR -------------------------------------------
-  qtr.setTypeAnalog();
-  qtr.setSensorPins((const uint8_t[]){A4, A5, A6, A7, A8, A9, A10, A11}, SensorCount);
-  qtr.setEmitterPin(35);
+  // qtr.setTypeAnalog();
+  // qtr.setSensorPins((const uint8_t[]){A4, A5, A6, A7, A8, A9, A10, A11}, SensorCount);
+  // qtr.setEmitterPin(35);
 
-  delay(250);
-  setColor(0, 255, 0);  // Encender LED RGB al iniciar
+  // delay(250);
+  // setColor(0, 255, 0);  // Encender LED RGB al iniciar
 
-  // analogRead() takes about 0.1 ms on an AVR.
-  // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors * 10 reads per calibrate() call = ~24 ms per calibrate() call.
-  // Call calibrate() 400 times to make calibration take about 10 seconds.
-  for (uint16_t i = 0; i < 400; i++){
-    qtr.calibrate();
-  }
-  digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
+  // // analogRead() takes about 0.1 ms on an AVR.
+  // // 0.1 ms per sensor * 4 samples per sensor read (default) * 6 sensors * 10 reads per calibrate() call = ~24 ms per calibrate() call.
+  // // Call calibrate() 400 times to make calibration take about 10 seconds.
+  // for (uint16_t i = 0; i < 400; i++){
+  //   qtr.calibrate();
+  // }
+  // digitalWrite(LED_BUILTIN, LOW); // turn off Arduino's LED to indicate we are through with calibration
 
-  // print the calibration minimum values measured when emitters were on
+  // // print the calibration minimum values measured when emitters were on
   Serial.begin(19200);
-  for (uint8_t i = 0; i < SensorCount; i++){
-    Serial.print(qtr.calibrationOn.minimum[i]);
-    Serial.print(' ');
-  }
-  Serial.println();
+  // for (uint8_t i = 0; i < SensorCount; i++){
+  //   Serial.print(qtr.calibrationOn.minimum[i]);
+  //   Serial.print(' ');
+  // }
+  // Serial.println();
 
-  // print the calibration maximum values measured when emitters were on
-  for (uint8_t i = 0; i < SensorCount; i++){
-    Serial.print(qtr.calibrationOn.maximum[i]);
-    Serial.print(' ');
-  }
-  Serial.println();
-  Serial.println();
-  setColor(0, 0, 0);  // Apagar al iniciar
-  delay(1000);
+  // // print the calibration maximum values measured when emitters were on
+  // for (uint8_t i = 0; i < SensorCount; i++){
+  //   Serial.print(qtr.calibrationOn.maximum[i]);
+  //   Serial.print(' ');
+  // }
+  // Serial.println();
+  // Serial.println();
+  // setColor(0, 0, 0);  // Apagar al iniciar
+  // delay(1000);
   // ------------------------------------------------------------------------------------------------
 
   // Configuración del giroscopio
@@ -328,8 +335,13 @@ void loop() {
   //   seguidorDeLinea();
   //   pruebaSensores();
   // }
-  // antiwallMovement(motorIzq, motorDer);
+  // antiwallMovement(motorIzq, motorDer, v);
+  // miServo.write(45);
+  // delay(1000);
+  // miServo.write(135);
+  // delay(1000);
   antiwallContinuousMovement(motorIzq, motorDer, v);
+  // rampa(motorDer, motorIzq, 200);
 }
 
 
@@ -367,18 +379,22 @@ void seguidorDeLinea() {
 }
 
 
-
-void laberintoPelota() { // Pendiente de Revisar
-  // Establecer pasos
-}
-
-
-
 // ------------------------ Todas las funciones auxiliares ------------------------
 
-// Función para detectar línea negra
+// ----------------------------------------------- Función para mover el servomotor
+void servo(bool pelota){
+  if(pelota){
+    servoMotor.write(1000); // Mueve el servo a la posición 1000 si hay pelota
+    delay(1000); // Espera 1 segundo
+  } else if(!pelota) {
+    servoMotor.write(2000); // Mueve el servo a la posición 2000 si no hay pelota
+    delay(1000); // Espera 1 segundo
+  }
+}
+
+// ------------------------------------------------ Función para detectar línea negra
 bool detectarLineaNegra() {
-  uint16_t position = qtr.readLineBlack(sensorValues);
+  uint16_t position = qtr.readLineBlack(sensorValues); // Lee los valores de los sensores QTR
   for (uint8_t i = 0; i < SensorCount; i++) {
     if (sensorValues[i] >= 400) { // Si detecta línea negra
       return true; // Devuelve verdadero
@@ -387,190 +403,369 @@ bool detectarLineaNegra() {
   return false;  // Si no detecta línea negra
 }
 
-// Función para ajustar la velocidad de los motores
+// ------------------------------------------------- Función para ajustar la velocidad de los motores
 void avanzar(int left, int right) {
-  motorIzq.cambiarVelocidad(abs(left));
-  motorDer.cambiarVelocidad(abs(right));
+  motorIzq.cambiarVelocidad(abs(left)); // Cambia la velocidad del motor izquierdo
+  motorDer.cambiarVelocidad(abs(right)); // Cambia la velocidad del motor derecho
 
   // Ambos motores deben girar en sentido horario para avanzar
-  left <= 0 ? motorIzq.giroHorario() : motorIzq.giroAntihorario();
-  right >= 0 ? motorDer.giroAntihorario() : motorDer.giroHorario();
+  left <= 0 ? motorIzq.giroHorario() : motorIzq.giroAntihorario(); // Determina la dirección del motor izquierdo
+  right >= 0 ? motorDer.giroAntihorario() : motorDer.giroHorario(); // Determina la dirección del motor derecho
 }
 
-void rampa(Motor& motor1, Motor& motor2, float velocidadInicial) {
-  float velocidadActual = velocidadInicial;
-    bool subiendo = false;
-    bool desacelerando = false;
-    bool enEquilibrio = false;
 
-    // Calibración inicial para obtener el valor estable de yaw
-    float yawEstable = 0.0;
-    const int numLecturas = 50; // Número de lecturas para obtener un promedio estable
-    for (int i = 0; i < numLecturas; i++) {
-        yawEstable += readGyroData();
-        delay(10);
-    }
-    yawEstable /= numLecturas; // Promedio de las lecturas iniciales
-    Serial.print("Yaw Estable: ");
-    Serial.println(yawEstable);
+// ---------------------------- Rampa START ----------------------------
 
-    // Sensibilidad para detección de cambios
-    float umbralSubida = yawEstable + 0.05;   // Ajusta según pruebas, valor relativo para detectar inicio de subida
-    float umbralNeutral = yawEstable + 0.01;  // Ajuste para valores neutros
-    float umbralDesaceleracion = yawEstable - 0.05; // Para detectar desaceleración
+// Función RAMPA GOD con estabilización
+void rampa(Motor& motor1, Motor& motor2, float velocidadInicial) { 
+  float velocidadActual = velocidadInicial; // Inicializa la velocidad actual
+  bool subiendo = false; // Bandera para indicar si está subiendo
+  bool desacelerando = false; // Bandera para indicar si está desacelerando
+  bool enEquilibrio = false; // Bandera para indicar si está en equilibrio
 
-    // Iniciar en el checkpoint, motores apagados
-    motorsOFF();
-    
+  // Iniciar en el checkpoint, motores apagados
+  motorsOFF(true); // Apaga los motores
+  Serial.println(readGyroData()); // Imprime los datos del giroscopio
+  yaw = readGyroData(); // Lee los datos del giroscopio
+
+
+  if(yaw <= 0.3 && yaw >= 0.0){
+    estados(3); // Cambia el estado a 3
+    avanzarMotoresSincronizados(motor1, motor2, 2, 2, true, false); // Avanzar en línea recta
     while (!enEquilibrio) {
         // Leer datos del giroscopio
-        float yaw = readGyroData();
-        Serial.print("Yaw: ");
-        Serial.println(yaw);
+        yaw = readGyroData();
         
-        // Paso 2: Detecta el inicio de la subida con valores mayores al umbral de subida
-        if (!subiendo && yaw > umbralSubida) {
-            subiendo = true;
-            velocidadActual = velocidadInicial;
-            Serial.print(yaw);
-            Serial.println(" Subiendo");
-            motor1.cambiarVelocidad(velocidadActual);
-            motor2.cambiarVelocidad(velocidadActual);
-            // motor1.giroHorario();
-            // motor2.giroAntihorario();
+        // Paso 2: Detecta el inicio de la subida con valores positivos del giroscopio
+        if (!subiendo && yaw > 0.05) { // Ajusta el valor umbral según la sensibilidad de tu sensor
+            subiendo = true; // Cambia la bandera a subiendo
+            // desacelerando = false;
+            velocidadActual = velocidadInicial; // Restablece la velocidad inicial
+            Serial.print(readGyroData()); // Imprime los datos del giroscopio
+            Serial.println(" Subiendo"); // Imprime "Subiendo"
+            movingGood(motorDer, motorIzq, velocidadActual); // Llama a la función movingGood
         }
         
-        // Paso 3: Sigue avanzando mientras los valores sean neutrales respecto a yawEstable
-        else if (subiendo && fabs(yaw - yawEstable) <= umbralNeutral) {
-            Serial.print(yaw);
-            Serial.println(" Avanzando");
-            motor1.cambiarVelocidad(velocidadActual);
-            motor2.cambiarVelocidad(velocidadActual);
+        // Paso 3: Sigue avanzando mientras los valores sean neutros
+        else if (subiendo && yaw >= 0.01) { // Neutralidad en el valor del yaw
+            Serial.print(readGyroData()); // Imprime los datos del giroscopio
+            Serial.println(" Avanzando"); // Imprime "Avanzando"
+            movingGood(motorDer, motorIzq, velocidadActual); // Llama a la función movingGood
         }
 
-        // Paso 4: Detecta desaceleración en cuanto los valores caen bajo el umbral de desaceleración
-        else if (yaw <= umbralDesaceleracion && !desacelerando) {
-            subiendo = false;
-            desacelerando = true;
+        // Paso 4: Detecta desaceleración en cuanto los valores se vuelven negativos
+        else if (yaw <= -0.0 && !desacelerando) {
+            subiendo = false; // Cambia la bandera a no subiendo
+            desacelerando = true; // Cambia la bandera a desacelerando
             velocidadActual *= 0.5; // Disminuye la velocidad a la mitad
-            Serial.print(yaw);
-            Serial.println(" Desacelerando");
-            motor1.cambiarVelocidad(velocidadActual);
-            motor2.cambiarVelocidad(velocidadActual);
+            Serial.print(readGyroData()); // Imprime los datos del giroscopio
+            Serial.println(" Desacelerando"); // Imprime "Desacelerando"
+            movingGood(motorDer, motorIzq, velocidadActual); // Llama a la función movingGood
         }
 
-        // Paso 5: Se apaga cuando detecta un cambio positivo cercano al valor estable
-        else if (desacelerando && yaw >= yawEstable) {
-            motorsOFF();
-            Serial.print(yaw);
-            Serial.println(" Equilibrio");
+        // Paso 5: Se apaga cuando detecta un cambio positivo (nuevo equilibrio)
+        else if (desacelerando && yaw >= 0.0) { // Proceso de equilibrar
+            // motorsOFF();
+            motor1.cambiarVelocidad(250); // Cambia la velocidad del motor1
+            motor2.cambiarVelocidad(250); // Cambia la velocidad del motor2
+            avanzarMotoresSincronizados(motor1, motor2, 1, 1, true, false); // Avanzar en línea recta
+            avanzarMotoresSincronizados(motor1, motor2, 1, 1, false, true); // Giro suave a la derecha
+            Serial.print(readGyroData()); // Imprime los datos del giroscopio
+            Serial.println(" Equilibrio"); // Imprime "Equilibrio"
             enEquilibrio = true; // Salimos del bucle
-            delay(4000); // Espera para estabilizar
+            delay(4000); // Espera 4 segundos
         }
 
         delay(20); // Pequeña pausa para dar estabilidad en la lectura
     }
+  }
+  else{
+    estados(2); // Cambia el estado a 2
+    Wire.begin(); // Inicializa la comunicación
+    Wire.beginTransmission(MPU); // Inicia la comunicación con el MPU6050
+    Wire.write(0x6B); // Habla con el registro 6B
+    Wire.write(0x00); // Restablece el registro 6B
+    Wire.endTransmission(true); // Termina la transmisión
+    Wire.beginTransmission(MPU); // Configura la sensibilidad del acelerómetro
+    Wire.write(0x1C); // Habla con el registro ACCEL_CONFIG
+    Wire.write(0x10); // Establece el rango de escala completa a +/- 8g
+    Wire.endTransmission(true); // Termina la transmisión
+    Wire.beginTransmission(MPU); // Configura la sensibilidad del giroscopio
+    Wire.write(0x1B); // Habla con el registro GYRO_CONFIG
+    Wire.write(0x10); // Establece el rango de escala completa a 1000deg/s
+    Wire.endTransmission(true); // Termina la transmisión
+    delay(20); // Espera 20 milisegundos
+  }
 }
 
+// Función para RAMPA
+void movingGood(Motor& motor1, Motor& motor2, int v){
+  // Leer las distancias de los obstaculos
+  int distLeft = getDistance(trigPin3, echoPin3); // Obtiene la distancia del obstáculo a la izquierda
+  int distRight = getDistance(trigPin1, echoPin1); // Obtiene la distancia del obstáculo a la derecha
+  if (distLeft < 10) {
+    Serial.println("Corrección Pared IZQUIERDA"); // Imprime "Corrección Pared IZQUIERDA"
+    motor1.cambiarVelocidad(v * 0.8); // Ajusta la velocidad del motor1
+    motor2.cambiarVelocidad(v * 1.1); // Ajusta la velocidad del motor2
+    motor1.giroHorario(); // Gira el motor1 en sentido horario
+    motor2.giroAntihorario(); // Gira el motor2 en sentido antihorario
+  } else if (distRight < 10) {
+    Serial.println("Corrección Pared DERECHA"); // Imprime "Corrección Pared DERECHA"
+    motor1.cambiarVelocidad(v * 1.1); // Ajusta la velocidad del motor1
+    motor2.cambiarVelocidad(v * 0.8); // Ajusta la velocidad del motor2
+    motor1.giroHorario(); // Gira el motor1 en sentido horario
+    motor2.giroAntihorario(); // Gira el motor2 en sentido antihorario
+  }
+}
+
+// ----------------------------- Rampa END -----------------------------
+// ----------------------------- Laberinto START -----------------------------
+
 // Función para avanzar y evitar las paredes
-void antiwallMovement(Motor& motor1, Motor& motor2) {
-    const int minDist = 10; // Distancia mínima en cm para corrección
+// Función para laberinto de Colores
+void antiwallMovement(Motor& motor1, Motor& motor2, int v) { // -------------- Funcion Pensada para Laberinto de colores
+    const int minDist = 9; // Distancia mínima en cm para corrección
+    const int minSide = 6;
+    const int maxSide = 9;
 
-    // Variables para almacenar la distancia a los objetos detectados
-    Serial.print("Frente ");
-    int distFront = getDistance(trigPin2, echoPin2);
-    Serial.print("Izquierda ");
-    int distLeft = getDistance(trigPin3, echoPin3);
-    Serial.print("Derecha ");
-    int distRight = getDistance(trigPin1, echoPin1);
+    float revsMotor1 = 0;
+    float revsMotor2 = 0;
 
-    // Corrección si hay obstáculos a los lados
-    if (distLeft < minDist) {
-        // Obstáculo a la izquierda, realizar un giro suave a la derecha
-        Serial.println("Correccion Pared IZQUIERDA");
-        avanzarMotoresSincronizados(motor1, motor2, 1, 0, true, false); // Revoluciones ajustadas para giro suave
-    } else if (distRight < minDist) {
-        // Obstáculo a la derecha, realizar un giro suave a la izquierda
-        Serial.println("Correccion Pared DERECHA");
-        avanzarMotoresSincronizados(motor1, motor2, 0, 1, true, false); // Revoluciones ajustadas para giro suave
-    }
+    // Lógica de movimiento constante
+    while (true) {
+    // Leer las distancias a los obstáculos
+      int distFront = getDistance(trigPin2, echoPin2);
+      int distLeft = getDistance(trigPin3, echoPin3);
+      int distRight = getDistance(trigPin1, echoPin1);
+      // Lee la cantidad de revoluciones actual
+      revsMotor1 = motor1.calcularRevoluciones();
+      revsMotor2 = motor2.calcularRevoluciones();
 
-    // Lógica de movimiento
-    if (distFront >= minDist) {
-        // Avanzar en línea recta si no hay obstáculo en el frente
-        Serial.println("Avanzar Recto");
-        avanzarMotoresSincronizados(motor1, motor2, 1, 1, true, false);  // Mismo número de revoluciones para avanzar recto
-    } else {
-        // Si hay un obstáculo al frente, decidir la dirección en función del espacio a los lados
-        if (distLeft > distRight) {
-            // Hay más espacio a la izquierda: girar a la izquierda
-            Serial.println("Avanzar a la Izquierda");
-            avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, true, true); // Giro de 180° a la izquierda
-        } else {
-            // Hay más espacio a la derecha: girar a la derecha
-            Serial.println("Avanzar a la Derecha");
-            avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, false, false); // Giro de 180° a la derecha
-        }
+      Serial.print("Frente: "); Serial.println(distFront);
+      Serial.print("Izquierda: "); Serial.println(distLeft);
+      Serial.print("Derecha: "); Serial.println(distRight);
+
+      // Corrección si hay obstáculos a los lados
+      if (distLeft < minSide) {
+          // Obstáculo a la izquierda, realizar un giro suave a la derecha
+          Serial.println("Corrección Pared IZQUIERDA");
+          motor1.cambiarVelocidad(v * 1.1); // Ajusta la velocidad según tus necesidades
+          motor2.cambiarVelocidad(v * 0.8); // Acelera motor2 para girar a la derecha
+          motor1.giroHorario();
+          motor2.giroAntihorario();
+      } 
+      else if (distRight < minSide) {
+          // Obstáculo a la derecha, realizar un giro suave a la izquierda
+          Serial.println("Corrección Pared DERECHA");
+          motor1.cambiarVelocidad(v * 0.8); // Acelera motor1 para girar a la izquierda
+          motor2.cambiarVelocidad(v * 1.1); // Ajusta la velocidad según tus necesidades
+          motor1.giroHorario();
+          motor2.giroAntihorario();
+      } 
+      if (distFront >= minDist) {
+          // Avanzar en línea recta si no hay obstáculo en el frente
+          Serial.println("Avanzar Recto");
+
+          // Ajusta la velocidad del motor que va más rápido
+          if (revsMotor1 > revsMotor2 || distRight < minSide || (distLeft <= maxSide && distLeft >= minSide)) {
+              motor1.cambiarVelocidad(v * 0.9);
+              motor2.cambiarVelocidad(v * 1.1);
+              motor1.giroHorario();
+              motor2.giroAntihorario();
+          } else if (revsMotor2 > revsMotor1 || distLeft < minSide || (distRight <= maxSide && distRight >= minSide)) {
+              motor1.cambiarVelocidad(v * 1.1);
+              motor2.cambiarVelocidad(v * 0.9);
+              motor1.giroHorario();
+              motor2.giroAntihorario();
+          } else {
+              // Ambos motores avanzan a la velocidad base si están sincronizados
+              motor1.cambiarVelocidad(v);
+              motor2.cambiarVelocidad(v);
+              motor1.giroHorario();
+              motor2.giroAntihorario();
+          }
+      } else if(distFront <= minDist) {
+          // Si hay un obstáculo al frente, decidir la dirección en función del espacio a los lados
+          motor1.cambiarVelocidad(v * 0.3); // Acelera motor1 para girar a la izquierda
+          motor2.cambiarVelocidad(v * 0.3); // Ajusta la velocidad según tus necesidades
+          if (distLeft > distRight) {
+              // Hay más espacio a la izquierda: girar a la izquierda
+              Serial.println("Girar a la Izquierda");
+              avanzarMotoresSincronizados(motor1, motor2, 1.5, 1.5, false, false); // Giro de 90° a la izquierda
+          } else if (distRight > distLeft) {
+              // Hay más espacio a la derecha: girar a la derecha
+              Serial.println("Girar a la Derecha");
+              avanzarMotoresSincronizados(motor1, motor2, 1.5, 1.5, true, true); // Giro de 90° a la derecha
+          }
+          motor1.resetearPulsos();
+          motor2.resetearPulsos();
+      }
+
+      delay(20); // Pequeña pausa para dar estabilidad en la lectura
     }
 }
 
 // Función para avanzar y evitar las paredes de forma continua
-void antiwallContinuousMovement(Motor& motor1, Motor& motor2, int v) {
-    const int minDist = 8; // Distancia mínima en cm para corrección
+// Función para laberinto con pelota
+void antiwallContinuousMovement(Motor& motor1, Motor& motor2, int v) { // ---------------- Funcion Pensada para Laberinto con pelota
+  const int minDist = 9; // Distancia mínima en cm para corrección
+  const int minSide = 6; // Distancia mínima lateral en cm para corrección
+  const int maxSide = 9; // Distancia máxima lateral en cm para corrección
 
-    // Lógica de movimiento constante
-    while (true) {
-        // Leer las distancias a los obstáculos
-        int distFront = getDistance(trigPin2, echoPin2);
-        int distLeft = getDistance(trigPin3, echoPin3);
-        int distRight = getDistance(trigPin1, echoPin1);
+  float revsMotor1 = 0; // Revoluciones del motor 1
+  float revsMotor2 = 0; // Revoluciones del motor 2
 
-        Serial.print("Frente: "); Serial.println(distFront);
-        Serial.print("Izquierda: "); Serial.println(distLeft);
-        Serial.print("Derecha: "); Serial.println(distRight);
+  int setpoint1 = 1; // Setpoint para el motor 1
+  int setpoint2 = 1; // Setpoint para el motor 2
 
-        // Corrección si hay obstáculos a los lados
-        if (distLeft < minDist) {
-            // Obstáculo a la izquierda, realizar un giro suave a la derecha
-            Serial.println("Corrección Pared IZQUIERDA");
-            motor1.cambiarVelocidad(v); // Ajusta la velocidad según tus necesidades
-            motor2.cambiarVelocidad(v * 0.8); // Acelera motor2 para girar a la derecha
-            motor1.giroHorario();
-            motor2.giroAntihorario();
-        } 
-        if (distRight < minDist) {
-            // Obstáculo a la derecha, realizar un giro suave a la izquierda
-            Serial.println("Corrección Pared DERECHA");
-            motor1.cambiarVelocidad(v * 0.8); // Acelera motor1 para girar a la izquierda
-            motor2.cambiarVelocidad(v); // Ajusta la velocidad según tus necesidades
-            motor1.giroHorario();
-            motor2.giroAntihorario();
-        } 
-        if (distFront >= minDist) {
-            // Avanzar en línea recta si no hay obstáculo en el frente
-            Serial.println("Avanzar Recto");
-            motor1.cambiarVelocidad(v); // Mantiene velocidad para avanzar recto
-            motor2.cambiarVelocidad(v); // Mantiene velocidad para avanzar recto
-            motor1.giroHorario();
-            motor2.giroAntihorario();
-        } else {
-            // Si hay un obstáculo al frente, decidir la dirección en función del espacio a los lados
-            if (distLeft > distRight) {
-                // Hay más espacio a la izquierda: girar a la izquierda
-                Serial.println("Girar a la Izquierda");
-                avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, true, true); // Giro de 180° a la izquierda
-            } else {
-                // Hay más espacio a la derecha: girar a la derecha
-                Serial.println("Girar a la Derecha");
-                avanzarMotoresSincronizados(motor1, motor2, 2.5, 2.5, false, false); // Giro de 180° a la derecha
-            }
-        }
+  int vueltasIzq = 0; // Contador de vueltas a la izquierda
+  int vueltasDer = 0; // Contador de vueltas a la derecha
 
-        delay(20); // Pequeña pausa para dar estabilidad en la lectura
+  int lastVuelta = 0; // Última vuelta realizada
+
+  bool paso = true; // Bandera para indicar si se ha pasado el obstáculo
+
+  // Lógica de movimiento constante
+  while (true) {
+    // Leer las distancias a los obstáculos
+    int distFront = getDistance(trigPin2, echoPin2); // Distancia al obstáculo frontal
+    int distLeft = getDistance(trigPin3, echoPin3); // Distancia al obstáculo izquierdo
+    int distRight = getDistance(trigPin1, echoPin1); // Distancia al obstáculo derecho
+    // Lee la cantidad de revoluciones actual
+    revsMotor1 = motor1.calcularRevoluciones(); // Revoluciones del motor 1
+    revsMotor2 = motor2.calcularRevoluciones(); // Revoluciones del motor 2
+
+    Serial.print("Frente: "); Serial.println(distFront); // Imprime la distancia frontal
+    Serial.print("Izquierda: "); Serial.println(distLeft); // Imprime la distancia izquierda
+    Serial.print("Derecha: "); Serial.println(distRight); // Imprime la distancia derecha
+
+    // Corrección si hay obstáculos a los lados
+    if (distLeft < minSide) {
+      // Obstáculo a la izquierda, realizar un giro suave a la derecha
+      Serial.println("Corrección Pared IZQUIERDA");
+      motor1.cambiarVelocidad(v * 1.1); // Ajusta la velocidad del motor 1
+      motor2.cambiarVelocidad(v * 0.8); // Ajusta la velocidad del motor 2
+      motor1.giroHorario(); // Gira el motor 1 en sentido horario
+      motor2.giroAntihorario(); // Gira el motor 2 en sentido antihorario
+    } 
+    else if (distRight < minSide) {
+      // Obstáculo a la derecha, realizar un giro suave a la izquierda
+      Serial.println("Corrección Pared DERECHA");
+      motor1.cambiarVelocidad(v * 0.8); // Ajusta la velocidad del motor 1
+      motor2.cambiarVelocidad(v * 1.1); // Ajusta la velocidad del motor 2
+      motor1.giroHorario(); // Gira el motor 1 en sentido horario
+      motor2.giroAntihorario(); // Gira el motor 2 en sentido antihorario
+    } 
+    if (distFront >= minDist) {
+      // Avanzar en línea recta si no hay obstáculo en el frente
+      Serial.println("Avanzar Recto");
+
+      // Ajusta la velocidad del motor que va más rápido
+      if (revsMotor1 > revsMotor2 || distRight < minSide || (distLeft <= maxSide && distLeft >= minSide)) {
+        motor1.cambiarVelocidad(v * 0.9); // Ajusta la velocidad del motor 1
+        motor2.cambiarVelocidad(v * 1.1); // Ajusta la velocidad del motor 2
+        motor1.giroHorario(); // Gira el motor 1 en sentido horario
+        motor2.giroAntihorario(); // Gira el motor 2 en sentido antihorario
+      } else if (revsMotor2 > revsMotor1 || distLeft < minSide || (distRight <= maxSide && distRight >= minSide)) {
+        motor1.cambiarVelocidad(v * 1.1); // Ajusta la velocidad del motor 1
+        motor2.cambiarVelocidad(v * 0.9); // Ajusta la velocidad del motor 2
+        motor1.giroHorario(); // Gira el motor 1 en sentido horario
+        motor2.giroAntihorario(); // Gira el motor 2 en sentido antihorario
+      } else {
+        // Ambos motores avanzan a la velocidad base si están sincronizados
+        motor1.cambiarVelocidad(v); // Ajusta la velocidad del motor 1
+        motor2.cambiarVelocidad(v); // Ajusta la velocidad del motor 2
+        motor1.giroHorario(); // Gira el motor 1 en sentido horario
+        motor2.giroAntihorario(); // Gira el motor 2 en sentido antihorario
+      }
+    } else if(distFront <= minDist) {
+      // Si hay un obstáculo al frente, decidir la dirección en función del espacio a los lados
+      motor1.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 1
+      motor2.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 2
+      if (distLeft > distRight) {
+        // Hay más espacio a la izquierda: girar a la izquierda
+        Serial.println("Girar a la Izquierda");
+        avanzarMotoresSincronizados(motor1, motor2, 1.5, 1.5, false, false); // Giro de 90° a la izquierda
+        vueltasIzq += 1; // Incrementa el contador de vueltas a la izquierda
+        lastVuelta = 1; // Última vuelta realizada a la izquierda
+      } else if (distRight > distLeft) {
+        // Hay más espacio a la derecha: girar a la derecha
+        Serial.println("Girar a la Derecha");
+        avanzarMotoresSincronizados(motor1, motor2, 1.5, 1.5, true, true); // Giro de 90° a la derecha
+        vueltasDer += 1; // Incrementa el contador de vueltas a la derecha
+        lastVuelta = 2; // Última vuelta realizada a la derecha
+      }
+      motor1.resetearPulsos(); // Resetea los pulsos del motor 1
+      motor2.resetearPulsos(); // Resetea los pulsos del motor 2
     }
+    if (((revsMotor1 >= setpoint1 || revsMotor2 >= setpoint2) && (vueltasDer == 1 && vueltasIzq == 1)) && distFront > minDist && paso) {
+      estados(3); // Cambia el estado a 3
+      motorsOFF(true); // Apaga los motores
+      estados(3); // Cambia el estado a 3
+      motorsOFF(false); // Apaga los motores
+      if (getDistance(trigPin3, echoPin3) >= maxSide + 20 || getDistance(trigPin1, echoPin1) >= maxSide + 20) {
+        if (lastVuelta == 1) {
+          motor1.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 1
+          motor2.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 2
+          estados(2); // Cambia el estado a 2
+          avanzarMotoresSincronizados(motor1, motor2, 1.5, 1.5, false, false); // Giro de 90° a la izquierda
+          avanzarMotoresSincronizados(motor1, motor2, 0.5, 0.5, true, false); // Avanza en línea recta
+          if (distFront > minDist) {
+            estados(1); // Cambia el estado a 1
+            motor1.cambiarVelocidad(70); // Ajusta la velocidad del motor 1
+            motor2.cambiarVelocidad(70); // Ajusta la velocidad del motor 2
+            avanzarMotoresSincronizados(motor1, motor2, 3, 3, true, true); // Giro de 180° a la derecha
+            delay(1000); // Espera 1 segundo
+            servo(true); // Mueve el servo a la posición 1000
+
+            while (distFront > minDist) {
+              motor1.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 1
+              motor2.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 2
+              motor1.giroHorario(); // Gira el motor 1 en sentido horario
+              motor2.giroAntihorario(); // Gira el motor 2 en sentido antihorario
+              distFront = getDistance(trigPin2, echoPin2); // Actualiza la distancia frontal
+              delay(20); // Espera 20 ms
+            }
+            servo(false); // Mueve el servo a la posición 2000
+          } 
+        } else if (lastVuelta == 2) {
+          estados(1); // Cambia el estado a 1
+          motor1.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 1
+          motor2.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 2
+          estados(1); // Cambia el estado a 1
+          avanzarMotoresSincronizados(motor1, motor2, 1.5, 1.8, true, true); // Giro de 90° a la derecha
+          if (distFront <= minDist + 5) {
+            estados(3); // Cambia el estado a 3
+            avanzarMotoresSincronizados(motor1, motor2, 1.8, 1.5, false, false); // Giro de 90° a la izquierda
+          } else if (distFront > minDist) {
+            estados(3); // Cambia el estado a 3
+            avanzarMotoresSincronizados(motor1, motor2, 3.6, 3, false, false); // Giro de 180° a la izquierda
+            delay(1000); // Espera 1 segundo
+            motor1.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 1
+            motor2.cambiarVelocidad(v * 0.3); // Ajusta la velocidad del motor 2
+            avanzarMotoresSincronizados(motor1, motor2, 1, 1, false, true); // Avanza en línea recta
+            servo(true); // Mueve el servo a la posición 1000
+            while (distFront >= minDist) {
+              motor1.giroAntihorario(); // Gira el motor 1 en sentido antihorario
+              motor2.giroHorario(); // Gira el motor 2 en sentido horario
+              distFront = getDistance(trigPin2, echoPin2); // Actualiza la distancia frontal
+              delay(20); // Espera 20 ms
+            }
+            servo(false); // Mueve el servo a la posición 2000
+          }
+        }
+      } else {
+        paso = false; // Cambia la bandera a false
+      }
+    }
+    delay(20); // Pequeña pausa para dar estabilidad en la lectura
+  }
 }
 
-// Función para avanzar una distancia específica
+// ----------------------------- Laberinto END -----------------------------
+// ----------------------------- Funciones Auxiliares -----------------------------
+
+// --------------------------------------------------------- Función para avanzar una distancia específica
 void avanzarMotoresSincronizados(Motor& motor1, Motor& motor2, float revolucionesIzq, float revolucionesDer, bool sentidoHorarioMotor1, bool sentidoHorarioMotor2) {
     // Resetear contador de pulsos en ambos motores
     motor1.resetearPulsos();
@@ -617,22 +812,34 @@ void avanzarMotoresSincronizados(Motor& motor1, Motor& motor2, float revolucione
 
 
     // Asegurarse de que ambos motores se apaguen al finalizar
-    motorsOFF();
+    motorsOFF(true);
 }
 
-// Función para apagar los motores Frenado Seco
-void motorsOFF() {
-  motorIzq.apagar();
-  motorDer.apagar();
-  delay(1);
-  // motorDer.giroHorario();
-  // motorIzq.giroAntihorario();
-  // delay(1);
-  // motorDer.apagar();
-  // motorIzq.apagar();
+// ---------------------------------------------- Función para apagar los motores Frenado Seco
+void motorsOFF(bool estado) {
+  if(estado){
+    motorIzq.apagar(); // Apagar motor izquierdo
+    motorDer.apagar(); // Apagar motor derecho
+    delay(1); // Esperar 1 milisegundo
+    motorDer.giroHorario(); // Girar motor derecho en sentido horario
+    motorIzq.giroAntihorario(); // Girar motor izquierdo en sentido antihorario
+    delay(1); // Esperar 1 milisegundo
+    motorDer.apagar(); // Apagar motor derecho
+    motorIzq.apagar(); // Apagar motor izquierdo
+  }
+  else {
+    motorIzq.apagar(); // Apagar motor izquierdo
+    motorDer.apagar(); // Apagar motor derecho
+    delay(1); // Esperar 1 milisegundo
+    motorDer.giroAntihorario(); // Girar motor derecho en sentido antihorario
+    motorIzq.giroHorario(); // Girar motor izquierdo en sentido horario
+    delay(1); // Esperar 1 milisegundo
+    motorDer.apagar(); // Apagar motor derecho
+    motorIzq.apagar(); // Apagar motor izquierdo
+  }
 }
 
-// Funciones para el sensor ultrasónico
+// ------------------------------------------------------- Funciones para el sensor ultrasónico
 float getDistance(int trigPin, int echoPin) {
   // Enviar un pulso de ultrasonido
   pinMode(trigPin, OUTPUT);  
@@ -648,12 +855,12 @@ float getDistance(int trigPin, int echoPin) {
 
   // Calcular la distancia en cm
   float distancia = (duration * 0.0343) / 2;
-  Serial.print("Distancia: ");
-  Serial.println(distancia);
+  // Serial.print("Distancia: ");
+  // Serial.println(distancia);
   return distancia;
 }
 
-// Funciones para el sensor de color
+// ---------------------------------------- Funciones para el sensor de color
 int getRojo(){
   digitalWrite(s2, LOW);
   digitalWrite(s3, LOW);
@@ -672,7 +879,7 @@ int getVerde(){
   return pulseIn(out, LOW);  // Devuelve la intensidad del color verde
 }
 
-// Funciones para el giroscopio (MPU6050)
+// ----------------------------------------------------- Funciones para el giroscopio (MPU6050)
 float readGyroData() {
   // === Read acceleromter data === //
   Wire.beginTransmission(MPU);
@@ -725,7 +932,7 @@ float readGyroData() {
   delay(20);
 }
 
-// Función para calcular el promedio móvil
+// ----------------------------------------- Función para calcular el promedio móvil DEL GIROSCOPIO
 float calculateMovingAverage(float newValue, float* window, int& index, float& sum) {
     // Restamos el valor más antiguo
     sum -= window[index];
@@ -739,7 +946,7 @@ float calculateMovingAverage(float newValue, float* window, int& index, float& s
     return sum / windowSize;
 }
 
-// Funciones para el LED RGB
+// ------------------------------------------ Funciones para el LED RGB
 void setColor(int red, int green, int blue) {
   analogWrite(pinRed, 255 - red);  // Anodo común
   analogWrite(pinGreen, 255 - green);
@@ -747,7 +954,7 @@ void setColor(int red, int green, int blue) {
 }
 
 // ------------------------ Funciones de Prueba ------------------------
-void pruebaSensores() {
+void pruebaSensores() { // Función para probar los sensores
   // Prueba de los sensores QTR
   uint16_t position = qtr.readLineBlack(sensorValues);
   for (uint8_t i = 0; i < SensorCount; i++) {
@@ -757,7 +964,7 @@ void pruebaSensores() {
   Serial.println();
 }
 
-void estados(int opcion){
+void estados(int opcion){ // Función para cambiar los estados LED RGB
   switch(opcion){
     case 1:
       setColor(255, 0, 0);  // Color rojo
