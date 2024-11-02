@@ -247,9 +247,9 @@ Motor motorIzq(2, 6, 4, 23, 44, vMin, vMax, 80, 10, 15, 360);  // Motor izquierd
 Motor motorDer(3, 7, 5, 24, 45, vMin, vMax, 0.2, 0.005, 0.05, 360); // Motor derecho
 
 // Velocidad alta
-int vHigh = 170;
+int vHigh = 150;
 // Velocidad media
-int vMedium = 140;
+int vMedium = 120;
 // Velocidad baja 
 int vLow = 100;
 
@@ -338,12 +338,17 @@ void setup() {
 void loop() {
   // lee los valores de los sensores 
   uint16_t position = qtr.readLineBlack(sensorValues);
-   
-  if (sensorValues [0] > 900 && sensorValues[7] > 900) {
-    avanzar (vMedium, vMedium);
-  }
-  // Si los sensores [3][4] detectan linea negra siga recto
+  //if (sensorValues [0] > 900 && sensorValues[7] > 900) {
+    // Si hay dos caminos elegir el izquierdo
+    //if (sensorValues [3] < 900 && sensorValues[4] < 900) {
+      //avanzar (-vHigh, vHigh);
+      //avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, false, false)
+      //return;
+    //}
+    //avanzar (vMedium, vMedium);
+  //} else 
   if (sensorValues[5] > 900 || sensorValues[6] > 900) {
+  // Si los sensores [3][4] detectan linea negra siga recto
     if
     // Si los sensores [5][6][7] detectan negro parar y hacer un giro de 90 a la izquierda
      (sensorValues[7] > 900) {
@@ -355,8 +360,9 @@ void loop() {
       delay(2000);
     }
     else if (sensorValues[6] > 900) {
+      Serial.println("Izquierda");
     // Si detecta negro en [5][6] ir más a la izquierda
-    avanzar (-vHigh, vHigh);
+      avanzar (-vHigh, vHigh);
     } else {
       // Si no va ligeramente a la izquierda
       avanzar (-vMedium, vMedium);
@@ -366,14 +372,17 @@ void loop() {
   else if (sensorValues[2] > 900 || sensorValues[1] > 900) {
     // Si los sensores [0][1][2] detectan negro parar y hacer un giro de 90 a la derecha
     if (sensorValues[0] > 900) {
-      avanzarMotoresSincronizados(motorIzq, motorDer, 1, 1, true, false);
+      avanzarMotoresSincronizados(motorIzq, motorDer, 2, 2, true, false);
       motorsOFF(true);
       Serial.println("Girar a la Derecha");
-      avanzarMotoresSincronizados(motorIzq, motorDer, 2, 2, true, true); // Giro de 90° a la derecha
+      avanzarMotoresSincronizados(motorIzq, motorDer, 1.8, 1.8, true, true); // Giro de 90° a la derecha
+      motorsOFF(true);
+      delay(1000);
     }
     else if (sensorValues[1] > 900) {
+      Serial.println("Derecha");
     // Si detecta negro en [2][1] ir más a la derecha
-    avanzar (vHigh, -vHigh);
+      avanzar (vHigh, -vHigh);
     } else {
       // Si no va ligeramente a la derecha
       avanzar (vMedium, -vMedium);
@@ -381,7 +390,7 @@ void loop() {
   }
   // Si el sensor [5] detecta negro ir a la izquierda
   else if (sensorValues[3] > 900 || sensorValues[4] > 900) {
-    Serial.println("Nada");
+    Serial.println("recto");
     avanzar(vMedium, vMedium);
   }
    // Si nada de esto pasa parar y encender led 
@@ -389,6 +398,7 @@ void loop() {
     estados (1);
     Serial.println("Nada");
     avanzar (vLow, vLow);
+    
    }
 }
 
